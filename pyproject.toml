@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "querysaas"
+version = "0.1.0"
+description = "Query and synchronize enterprise SaaS applications"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Sravan Yanamandra"}]
+keywords = ["saas", "oracle-fusion", "bi-publisher", "duckdb", "etl", "salesforce"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "requests>=2.31",
+  "pandas>=2.1",
+  "lxml>=5.0",
+  "duckdb>=1.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "build>=1.2", "twine>=5", "jupyterlab>=4"]
+
+[project.urls]
+Homepage = "https://github.com/your-org/querysaas"
+Repository = "https://github.com/your-org/querysaas"
+Issues = "https://github.com/your-org/querysaas/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
