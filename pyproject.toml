@@ -29,9 +29,9 @@ dependencies = [
 dev = ["pytest>=8", "build>=1.2", "twine>=5", "jupyterlab>=4"]
 
 [project.urls]
-Homepage = "https://github.com/your-org/querysaas"
-Repository = "https://github.com/your-org/querysaas"
-Issues = "https://github.com/your-org/querysaas/issues"
+Homepage = "https://github.com/yvrnsravankumar/QuerySaaS"
+Repository = "https://github.com/yvrnsravankumar/QuerySaaS"
+Issues = "https://github.com/yvrnsravankumar/QuerySaaS/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
