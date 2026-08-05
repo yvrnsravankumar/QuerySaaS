@@ -621,24 +621,21 @@ Version 0.1.3 preserves:
 
 The BI Publisher catalog/object APIs and generic ESS APIs are additive.
 
-## Legal and trademarks
+<!-- QUERYSAAS-FBDI-REGISTRY-BEGIN -->
+## Live FBDI job registry
 
-QuerySaaS is an independent, community-developed project. It is not
-affiliated with, endorsed by, sponsored by, or supported by Oracle
-Corporation or its affiliates.
+QuerySaaS refreshes FBDI job metadata from the connected Oracle Fusion environment on the first FBDI operation for each connection. The connection caches the validated rows for later operations.
 
-Oracle, Java, Oracle Fusion, Oracle Fusion Cloud, Oracle Cloud,
-Oracle BI Publisher, and related product names are trademarks or
-registered trademarks of Oracle Corporation and/or its affiliates.
-Other names may be trademarks of their respective owners.
+```python
+jobs = connection.get_fbdi_jobs()
+display(jobs)
 
-References to Oracle products and services are descriptive and are
-used solely to identify compatibility and integration behavior.
+project_budgets = connection.get_fbdi_jobs(
+    business_object="Project Budget",
+)
 
-QuerySaaS does not include an Oracle Fusion Cloud license. Users are
-responsible for obtaining appropriate Oracle licenses, subscriptions,
-permissions, and credentials, and for complying with the agreements
-that govern their Oracle environments.
+jobs = connection.refresh_fbdi_jobs(force=True)
+```
 
-This project does not grant permission to use Oracle logos, product
-artwork, documentation, software, or other Oracle-owned materials.
+The live registry contains ERP family, application ID, business object, interface option ID, UCM account, derived document account, load and import job names, control file name, and interface table names. If the live query fails, QuerySaaS uses the packaged `data/fbdi_jobs.csv` snapshot and exposes the refresh error through DataFrame attributes or the structured dictionary result.
+<!-- QUERYSAAS-FBDI-REGISTRY-END -->

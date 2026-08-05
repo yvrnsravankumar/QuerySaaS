@@ -107,3 +107,19 @@ GitHub release baseline for the existing `querysaas` package. This release is ad
 - BI Publisher report provisioning and SQL execution.
 - DuckDB copy and synchronization APIs.
 - Authentication header construction and Oracle Fusion connection lifecycle.
+
+<!-- QUERYSAAS-FBDI-REGISTRY-BEGIN -->
+## 0.1.4 - 2026-08-05
+
+### Added
+
+- Added `refresh_fbdi_jobs()` to query live Oracle Fusion FBDI metadata.
+- Added `get_fbdi_jobs()` with DataFrame or dictionary output and filters for ERP family, application ID, business object, interface option ID, control file, and interface table.
+- Added automatic first-use refresh for FBDI import, CSV, DuckDB, and purge operations.
+- Added connection-level caching, forced refresh, validated fallback, and registry unit/live tests.
+
+### Fixed
+
+- Included `data/*.csv` explicitly in wheel package data.
+- Preserved the packaged FBDI registry as a fallback when live metadata access is unavailable.
+<!-- QUERYSAAS-FBDI-REGISTRY-END -->
