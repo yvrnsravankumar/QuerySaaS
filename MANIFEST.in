@@ -1,2 +1,6 @@
-include README.md LICENSE
-recursive-include examples *.ipynb *.py
+include README.md
+include LICENSE
+include CHANGELOG.md
+recursive-include examples *
+recursive-include tests *.py
+recursive-include src/querysaas/data *.csv
