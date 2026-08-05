@@ -1587,4 +1587,28 @@ def _copy2dd_parallel(
 # Add the parallel methods to the existing connection class.
 FusionConnection.syncquery2dd_parallel = _syncquery2dd_parallel
 FusionConnection.copy2dd_parallel = _copy2dd_parallel
+# BEGIN QUERYSAAS COPY2FILE PIPELINE
+from .pipeline import _copy2file, _copy2file_parallel
 
+FusionConnection.copy2file = _copy2file
+FusionConnection.copy2file_parallel = _copy2file_parallel
+# END QUERYSAAS COPY2FILE PIPELINE
+# QUERYSAAS-03-BEGIN
+from dataclasses import dataclass
+from time import perf_counter
+from .sql import OracleSqlPlanner
+from .exceptions import OracleSqlError
+@dataclass(frozen=True)
+class CountQueryResult:
+    row_count: int
+    duration_ms: int
+    generated_sql: str
+    strategy: str
+
+def _countquery_013(self, sql):
+    plan=OracleSqlPlanner().count_query(sql); started=perf_counter()
+    frame=self.executequery(plan.executable_sql,all_varchar=True)
+    if frame.empty or 'ROW_COUNT' not in frame.columns: raise RuntimeError('Count query did not return ROW_COUNT.')
+    return CountQueryResult(int(frame.iloc[0]['ROW_COUNT']),int((perf_counter()-started)*1000),plan.executable_sql,plan.strategy)
+FusionConnection.countquery=_countquery_013
+# QUERYSAAS-03-END
