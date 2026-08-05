@@ -1,15 +1,190 @@
 """Oracle Fusion FBDI import and purge proof-of-concept pipelines."""
 from __future__ import annotations
 import base64, csv, json, re, tempfile, zipfile
+from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
 import duckdb
 import requests
 
 ENDPOINT='/fscmRestApi/resources/11.13.18.05/erpintegrations'
-def _rows():
-    p=files('querysaas').joinpath('data/fbdi_jobs.csv')
-    with p.open('r',encoding='utf-8-sig',newline='') as h: return [{k.strip():(v or '').strip() for k,v in r.items()} for r in csv.DictReader(h)]
+FBDI_JOBS_SQL = """
+SELECT
+    opt.erp_family,
+    opt.application_id,
+    opt.business_object,
+    opt.erp_interface_options_id,
+    opt.ucm_account,
+    REPLACE(opt.ucm_account, '/', '$/') || '$' AS document_account,
+    opt.load_job_name,
+    opt.import_job_name,
+    det.control_file_name,
+    det.interface_table_names
+FROM fun_erp_interface_options opt
+LEFT JOIN fun_erp_interface_details det
+    ON opt.erp_interface_options_id = det.erp_interface_options_id
+ORDER BY
+    opt.erp_family,
+    opt.application_id,
+    opt.business_object,
+    opt.erp_interface_options_id,
+    det.control_file_name
+""".strip()
+
+FBDI_REQUIRED_COLUMNS = {
+    "ERP_FAMILY",
+    "APPLICATION_ID",
+    "BUSINESS_OBJECT",
+    "ERP_INTERFACE_OPTIONS_ID",
+    "UCM_ACCOUNT",
+    "DOCUMENT_ACCOUNT",
+    "LOAD_JOB_NAME",
+    "IMPORT_JOB_NAME",
+    "CONTROL_FILE_NAME",
+    "INTERFACE_TABLE_NAMES",
+}
+
+
+def _packaged_rows():
+    """Load the versioned fallback registry included in the package."""
+    resource = files("querysaas").joinpath("data/fbdi_jobs.csv")
+    if not resource.is_file():
+        return []
+    with resource.open("r", encoding="utf-8-sig", newline="") as handle:
+        return [
+            {
+                str(key).strip().upper(): (value or "").strip()
+                for key, value in row.items()
+            }
+            for row in csv.DictReader(handle)
+        ]
+
+
+def _normalize_registry_frame(frame):
+    """Validate and normalize a live FBDI registry query result."""
+    if frame is None:
+        raise RuntimeError("The live FBDI registry query returned no result.")
+    normalized = frame.copy()
+    normalized.columns = [str(column).strip().upper() for column in normalized.columns]
+    missing = sorted(FBDI_REQUIRED_COLUMNS - set(normalized.columns))
+    if missing:
+        raise RuntimeError(
+            "The live FBDI registry query is missing columns: "
+            + ", ".join(missing)
+        )
+    normalized = normalized[list(sorted(FBDI_REQUIRED_COLUMNS))]
+    normalized = normalized.fillna("")
+    for column in normalized.columns:
+        normalized[column] = normalized[column].astype(str).str.strip()
+    normalized = normalized.sort_values(
+        [
+            "ERP_FAMILY",
+            "APPLICATION_ID",
+            "BUSINESS_OBJECT",
+            "ERP_INTERFACE_OPTIONS_ID",
+            "CONTROL_FILE_NAME",
+        ],
+        kind="stable",
+    ).reset_index(drop=True)
+    return normalized
+
+
+def refresh_fbdi_jobs(self, force=False):
+    """Refresh FBDI job metadata from the connected Fusion environment."""
+    if not isinstance(force, bool):
+        raise ValueError("force must be True or False.")
+    existing = getattr(self, "_fbdi_job_rows", None)
+    if existing is not None and not force:
+        return get_fbdi_jobs(self, refresh=False)
+    try:
+        frame = self.executequery(FBDI_JOBS_SQL, all_varchar=True)
+        frame = _normalize_registry_frame(frame)
+    except Exception as error:
+        fallback = _packaged_rows()
+        if not fallback:
+            raise RuntimeError(
+                "Unable to refresh FBDI jobs from Oracle Fusion and no "
+                "packaged fallback registry is available."
+            ) from error
+        self._fbdi_job_rows = fallback
+        self._fbdi_job_source = "packaged_fallback"
+        self._fbdi_job_refreshed_at = None
+        self._fbdi_job_refresh_error = str(error)
+        return get_fbdi_jobs(self, refresh=False)
+
+    self._fbdi_job_rows = frame.to_dict(orient="records")
+    self._fbdi_job_source = "oracle_fusion"
+    self._fbdi_job_refreshed_at = datetime.now(timezone.utc).isoformat()
+    self._fbdi_job_refresh_error = None
+    return get_fbdi_jobs(self, refresh=False)
+
+
+def get_fbdi_jobs(
+    self,
+    refresh=True,
+    erp_family=None,
+    application_id=None,
+    business_object=None,
+    interface_options_id=None,
+    control_file_name=None,
+    interface_table=None,
+    as_dataframe=True,
+):
+    """Return live or fallback FBDI job metadata with optional filters."""
+    if refresh and getattr(self, "_fbdi_job_rows", None) is None:
+        refresh_fbdi_jobs(self)
+    rows = getattr(self, "_fbdi_job_rows", None)
+    if rows is None:
+        rows = _packaged_rows()
+        self._fbdi_job_rows = rows
+        self._fbdi_job_source = "packaged_fallback"
+        self._fbdi_job_refreshed_at = None
+        self._fbdi_job_refresh_error = None
+
+    def same(value, expected):
+        return expected is None or str(value).strip().casefold() == str(expected).strip().casefold()
+
+    result = []
+    for row in rows:
+        tables = [item.strip() for item in row.get("INTERFACE_TABLE_NAMES", "").split(",")]
+        if not same(row.get("ERP_FAMILY", ""), erp_family):
+            continue
+        if not same(row.get("APPLICATION_ID", ""), application_id):
+            continue
+        if not same(row.get("BUSINESS_OBJECT", ""), business_object):
+            continue
+        if not same(row.get("ERP_INTERFACE_OPTIONS_ID", ""), interface_options_id):
+            continue
+        if not same(row.get("CONTROL_FILE_NAME", ""), control_file_name):
+            continue
+        if interface_table is not None and not any(same(table, interface_table) for table in tables):
+            continue
+        result.append(dict(row))
+
+    if as_dataframe:
+        import pandas as pd
+        frame = pd.DataFrame(result)
+        frame.attrs["source"] = getattr(self, "_fbdi_job_source", None)
+        frame.attrs["refreshed_at"] = getattr(self, "_fbdi_job_refreshed_at", None)
+        frame.attrs["refresh_error"] = getattr(self, "_fbdi_job_refresh_error", None)
+        return frame
+    return {
+        "rows": result,
+        "count": len(result),
+        "source": getattr(self, "_fbdi_job_source", None),
+        "refreshed_at": getattr(self, "_fbdi_job_refreshed_at", None),
+        "refresh_error": getattr(self, "_fbdi_job_refresh_error", None),
+    }
+
+
+def _rows(self=None):
+    """Return the connection's live registry, refreshing on first use."""
+    if self is None:
+        return _packaged_rows()
+    if getattr(self, "_fbdi_job_rows", None) is None:
+        refresh_fbdi_jobs(self)
+    return list(self._fbdi_job_rows)
+
 def _normalize_fbdi_selector(value):
     """Normalize a selector while preserving exact Oracle CSV output names."""
     if value is None:
@@ -75,10 +250,10 @@ def _score_row(selector, row):
     return None
 
 
-def _matching(selector):
+def _matching(self, selector):
     """Return only the highest-quality registry matches for a selector."""
     ranked = []
-    for row in _rows():
+    for row in _rows(self):
         score = _score_row(selector, row)
         if score is None:
             continue
@@ -106,7 +281,7 @@ def _format_configurations(configurations):
     ]
 
 
-def _resolve(selectors, interface_options_id=None):
+def _resolve(self, selectors, interface_options_id=None):
     """Resolve all supplied selectors to one logical FBDI configuration."""
     selectors = [selector for selector in selectors if str(selector).strip()]
     if not selectors:
@@ -116,7 +291,7 @@ def _resolve(selectors, interface_options_id=None):
     selector_configurations = []
 
     for selector in selectors:
-        matches = _matching(selector)
+        matches = _matching(self, selector)
         if required_option is not None:
             matches = [
                 row for row in matches
@@ -151,7 +326,7 @@ def _resolve(selectors, interface_options_id=None):
 
     selected_key = next(iter(common))
     registry_rows = [
-        row for row in _rows()
+        row for row in _rows(self)
         if _configuration_key(row) == selected_key
     ]
     first = registry_rows[0]
@@ -177,10 +352,10 @@ def _resolve(selectors, interface_options_id=None):
     }
 
 
-def _selector_row(selector, config):
+def _selector_row(self, selector, config):
     """Resolve a selector to exactly one Oracle control file in a job."""
     matches = [
-        row for row in _matching(selector)
+        row for row in _matching(self, selector)
         if row.get("ERP_INTERFACE_OPTIONS_ID", "").strip()
         == config["interface_options_id"]
         and row.get("CONTROL_FILE_NAME", "").strip()
@@ -218,7 +393,7 @@ def import_fbdi(self, source, business_object=None, interface_table=None, standa
     with zipfile.ZipFile(path) as z: members=[Path(n).name for n in z.namelist() if n.lower().endswith('.csv')]
     selectors=[x for x in (business_object,interface_table,standard_file_name) if x]
     if not selectors: selectors=members
-    config=_resolve(selectors,interface_options_id)
+    config=_resolve(self,selectors,interface_options_id)
     payload={'OperationName':'importBulkData','DocumentContent':base64.b64encode(path.read_bytes()).decode('ascii'),'ContentType':'zip','FileName':path.name,'DocumentAccount':config['document_account'],'JobName':config['job_name'],'ParameterList':_params(parameter_list),'CallbackURL':callback_url or '#NULL','NotificationCode':str(notification_code or '10'),'JobOptions':f"InterfaceDetails={config['interface_options_id']},ImportOption=Y,PurgeOption=N,ExtractFileType=ALL"}
     data=_post(self,payload); return {'status':'SUBMITTED','request_id':str(data['ReqstId']),'zip_file':str(path),**{k:v for k,v in config.items() if k!='rows'},'response':data}
 
@@ -227,25 +402,25 @@ def csv2fbdi(self, source, zip_file=None, parameter_list=None, callback_url='#NU
     else:
         paths=[Path(source).expanduser().resolve()] if isinstance(source,(str,Path)) else [Path(p).expanduser().resolve() for p in source]
         pairs=[(p,p.name) for p in paths]
-    config=_resolve([s for _,s in pairs],interface_options_id)
+    config=_resolve(self,[s for _,s in pairs],interface_options_id)
     for p,_ in pairs:
         if not p.is_file(): raise FileNotFoundError(p)
     name=zip_file or f"{config['business_object']}_FBDI.zip"; out=Path(name).expanduser(); out=out if out.suffix else out.with_suffix('.zip'); out=out.resolve(); out.parent.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
         used=set()
         for p,s in pairs:
-            oracle=Path(_selector_row(s,config)['CONTROL_FILE_NAME']).stem+'.csv'
+            oracle=Path(_selector_row(self,s,config)['CONTROL_FILE_NAME']).stem+'.csv'
             if oracle in used: raise ValueError(f'Duplicate Oracle CSV name: {oracle}')
             used.add(oracle); z.write(p,oracle)
     return import_fbdi(self,out,interface_options_id=config['interface_options_id'],parameter_list=parameter_list,callback_url=callback_url,notification_code=notification_code)
 
 def duckdb2fbdi(self, duckdb_path, files, zip_file=None, parameter_list=None, callback_url='#NULL', notification_code='10', interface_options_id=None):
-    config=_resolve(list(files),interface_options_id); total=0
+    config=_resolve(self,list(files),interface_options_id); total=0
     with tempfile.TemporaryDirectory(prefix='querysaas_fbdi_') as tmp:
         generated={}; con=duckdb.connect(str(Path(duckdb_path).expanduser().resolve()),read_only=True)
         try:
             for selector,query in files.items():
-                frame=con.execute(query).fetch_df(); total+=len(frame); oracle=Path(_selector_row(selector,config)['CONTROL_FILE_NAME']).stem+'.csv'; p=Path(tmp)/oracle; frame.to_csv(p,index=False,header=False,encoding='utf-8',lineterminator='\n',na_rep=''); generated[p]=selector
+                frame=con.execute(query).fetch_df(); total+=len(frame); oracle=Path(_selector_row(self,selector,config)['CONTROL_FILE_NAME']).stem+'.csv'; p=Path(tmp)/oracle; frame.to_csv(p,index=False,header=False,encoding='utf-8',lineterminator='\n',na_rep=''); generated[p]=selector
         finally: con.close()
         result=csv2fbdi(self,generated,zip_file=zip_file,parameter_list=parameter_list,callback_url=callback_url,notification_code=notification_code,interface_options_id=config['interface_options_id'])
     result['source_rows']=total; result['source_type']='duckdb'; return result
@@ -544,7 +719,7 @@ def purge_fbdi(
                 "standard_file_name, or interface_options_id."
             )
 
-        resolved = _resolve(selectors)
+        resolved = _resolve(self, selectors)
         resolved_option_id = resolved["interface_options_id"]
         resolved_business_object = resolved["business_object"]
     else:
@@ -614,6 +789,8 @@ def purge_fbdi(
 
 
 def install_fbdi_methods(cls):
+    cls.refresh_fbdi_jobs = refresh_fbdi_jobs
+    cls.get_fbdi_jobs = get_fbdi_jobs
     cls.import_fbdi = import_fbdi
     cls.csv2fbdi = csv2fbdi
     cls.duckdb2fbdi = duckdb2fbdi
