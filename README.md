@@ -6,18 +6,43 @@ Current version: **0.1.3**
 
 Repository: <https://github.com/yvrnsravankumar/QuerySaaS>
 
-## Installation
+## Installation from GitHub
 
-Install the package from a local wheel:
+Clone the GitHub repository and install QuerySaaS from the repository root:
 
 ```powershell
-python -m pip install .\dist\querysaas-0.1.3-py3-none-any.whl
+git clone https://github.com/yvrnsravankumar/QuerySaaS.git
+cd QuerySaaS
+python -m pip install .
 ```
 
-For development:
+Install directly from GitHub without cloning:
 
 ```powershell
+python -m pip install "git+https://github.com/yvrnsravankumar/QuerySaaS.git@main"
+```
+
+For development, testing, and packaging:
+
+```powershell
+git clone https://github.com/yvrnsravankumar/QuerySaaS.git
+cd QuerySaaS
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
+```
+
+Verify the installation:
+
+```powershell
+python -c "import querysaas; print(querysaas.__version__)"
+```
+
+Expected version:
+
+```text
+0.1.3
 ```
 
 ## Connection
@@ -51,6 +76,32 @@ Configuration options include:
 - `report_path`: BI Publisher execution report path
 - `timeout`: HTTP timeout in seconds
 - `verify_ssl`: SSL verification, enabled by default
+
+## Repository layout
+
+```text
+QuerySaaS/
+├── examples/
+├── src/
+│   └── querysaas/
+│       ├── __init__.py
+│       ├── bip.py
+│       ├── exceptions.py
+│       ├── fbdi.py
+│       ├── oracle_fusion.py
+│       ├── pipeline.py
+│       ├── registry.py
+│       ├── sql.py
+│       ├── xdrz_payload.py
+│       └── data/
+│           └── fbdi_jobs.csv
+├── tests/
+├── CHANGELOG.md
+├── LICENSE
+├── MANIFEST.in
+├── pyproject.toml
+└── README.md
+```
 
 ## Architecture
 
@@ -530,7 +581,9 @@ Review the safe fault reason, HTTP status, operation, and catalog/report path. C
 
 `monitor_ess_job()` returns `found=False` when Oracle returns no items for the request ID.
 
-## Development and release
+## Development, testing, and release
+
+Run the complete local verification from the repository root:
 
 ```powershell
 python -m compileall .\src\querysaas .\tests
@@ -539,14 +592,49 @@ python -m build
 python -m twine check .\dist\*
 ```
 
-Clean installation check:
+Validate the wheel in a clean environment:
 
 ```powershell
-python -m venv "$env:TEMP\querysaas-release-test"
-& "$env:TEMP\querysaas-release-test\Scripts\python.exe" `
-    -m pip install .\dist\querysaas-0.1.3-py3-none-any.whl
-& "$env:TEMP\querysaas-release-test\Scripts\python.exe" `
-    -c "import querysaas; assert querysaas.__version__ == '0.1.3'"
+$ReleaseTest = Join-Path $env:TEMP "querysaas-release-test"
+Remove-Item $ReleaseTest -Recurse -Force -ErrorAction SilentlyContinue
+python -m venv $ReleaseTest
+$ReleasePython = Join-Path $ReleaseTest "Scripts\python.exe"
+& $ReleasePython -m pip install .\dist\querysaas-0.1.3-py3-none-any.whl
+& $ReleasePython -c @"
+import querysaas
+assert querysaas.__version__ == "0.1.3"
+print("QuerySaaS clean installation passed.")
+"@
+Remove-Item $ReleaseTest -Recurse -Force
+```
+
+Before committing or uploading through the GitHub UI, exclude generated and sensitive content:
+
+```text
+.venv/
+.release-test/
+.manual_backups/
+.pytest_cache/
+__pycache__/
+build/
+dist/
+*.egg-info/
+.env
+.env.*
+*.duckdb
+QUERYSAAS_LIBRARY_SOURCE_REPORT.txt
+```
+
+Never commit Fusion passwords, Authorization values, session cookies, customer data files, generated FBDI archives, or BI Publisher object Base64.
+
+### GitHub publication
+
+The repository root should contain `README.md`, `CHANGELOG.md`, `LICENSE`, `MANIFEST.in`, `pyproject.toml`, `src`, `tests`, and `examples`. Preserve the `src/querysaas` hierarchy when uploading files in the GitHub UI.
+
+Recommended GitHub commit message for this release:
+
+```text
+Release QuerySaaS 0.1.3 with BI Publisher and ESS APIs
 ```
 
 ## Compatibility

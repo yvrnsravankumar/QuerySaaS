@@ -4,6 +4,8 @@ All notable changes to QuerySaaS are documented in this file.
 
 ## 0.1.3 - 2026-08-05
 
+GitHub release baseline for the existing `querysaas` package. This release is additive and keeps the package name, provider name, and established public APIs unchanged.
+
 ### Added
 
 - Comment-aware `OracleSqlPlanner` with validation, count, row-limit, and OFFSET/FETCH page planning.
@@ -33,6 +35,8 @@ All notable changes to QuerySaaS are documented in this file.
 
 ### Changed
 
+- Reworked `README.md` as the GitHub landing page with repository installation, architecture, complete public API examples, security guidance, testing, packaging, and publication instructions.
+- Consolidated release history in `CHANGELOG.md` for GitHub publication.
 - Parallel local-file pagination delegates SQL generation to the shared Oracle SQL planner.
 - Parallel pages are written in ascending offset order even when page requests finish out of order.
 - The first non-empty page establishes the header and schema.
