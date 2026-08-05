@@ -1,31 +1,18 @@
-name: QuerySaaS CI
+name: Publish QuerySaaS
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  release:
+    types:
+      - published
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Python ${{ matrix.python-version }}
+  build:
+    name: Build QuerySaaS distributions
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version:
-          - "3.10"
-          - "3.11"
-          - "3.12"
-          - "3.13"
-          - "3.14"
 
     steps:
       - name: Check out repository
@@ -34,7 +21,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
           cache: pip
 
       - name: Install packaging tools
@@ -69,20 +56,53 @@ jobs:
           import zipfile
 
           wheel = next(
-              Path("dist").glob("querysaas-*.whl")
+              Path("dist").glob(
+                  "querysaas-0.1.4-*.whl"
+              )
+          )
+
+          expected = (
+              "querysaas/data/fbdi_jobs.csv"
           )
 
           with zipfile.ZipFile(wheel) as archive:
-              names = archive.namelist()
-
-          expected = "querysaas/data/fbdi_jobs.csv"
-
-          if expected not in names:
-              raise SystemExit(
-                  f"Missing wheel resource: {expected}"
-              )
+              if expected not in archive.namelist():
+                  raise SystemExit(
+                      f"Missing resource: {expected}"
+                  )
 
           print(
               "Wheel contains FBDI registry:",
               expected,
           )
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish QuerySaaS to PyPI
+    needs:
+      - build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/querysaas
+
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
