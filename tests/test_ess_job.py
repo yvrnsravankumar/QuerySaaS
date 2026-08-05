@@ -36,7 +36,7 @@ def test_purge_reuses_submit_ess_job(monkeypatch):
         captured.update(kwargs)
         return {"status": "SUBMITTED", "request_id": "900", "ess_parameters": kwargs["parameters"], "response": {"ReqstId": "900"}}
     connection.submit_ess_job = submit
-    monkeypatch.setattr(fbdi, "_resolve", lambda selectors: {"interface_options_id": "39", "business_object": "Project Budget"})
+    monkeypatch.setattr(fbdi, "_resolve", lambda self, selectors: {"interface_options_id": "39", "business_object": "Project Budget"})
     result = fbdi.purge_fbdi(connection, load_request_id=100, standard_file_name="ProjectBudgets")
     assert result["purge_request_id"] == "900"
     assert captured["job_definition_name"] == "InterfaceLoaderPurge"
