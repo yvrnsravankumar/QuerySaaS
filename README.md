@@ -6,43 +6,10 @@ Current version: **0.1.3**
 
 Repository: <https://github.com/yvrnsravankumar/QuerySaaS>
 
-## Installation from GitHub
-
-Clone the GitHub repository and install QuerySaaS from the repository root:
+## Installation
 
 ```powershell
-git clone https://github.com/yvrnsravankumar/QuerySaaS.git
-cd QuerySaaS
-python -m pip install .
-```
-
-Install directly from GitHub without cloning:
-
-```powershell
-python -m pip install "git+https://github.com/yvrnsravankumar/QuerySaaS.git@main"
-```
-
-For development, testing, and packaging:
-
-```powershell
-git clone https://github.com/yvrnsravankumar/QuerySaaS.git
-cd QuerySaaS
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-```
-
-Verify the installation:
-
-```powershell
-python -c "import querysaas; print(querysaas.__version__)"
-```
-
-Expected version:
-
-```text
-0.1.3
+pip install querysaas
 ```
 
 ## Connection
