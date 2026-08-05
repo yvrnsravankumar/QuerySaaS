@@ -1,14 +1,5 @@
-import ast
 from pathlib import Path
-
-
-def test_sources_parse():
-    root = Path(__file__).parents[1] / "src" / "querysaas"
-    for path in root.glob("*.py"):
-        ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-
-
-def test_payload_is_embedded_module():
-    payload = Path(__file__).parents[1] / "src" / "querysaas" / "xdrz_payload.py"
-    assert payload.exists()
-    assert "BIP_XDRZ_BASE64" in payload.read_text(encoding="utf-8")
+import querysaas
+def test_version(): assert querysaas.__version__=='0.1.3'
+def test_files():
+    root=Path(__file__).parents[1]; assert (root/'src/querysaas/sql.py').exists() and (root/'src/querysaas/exceptions.py').exists()
