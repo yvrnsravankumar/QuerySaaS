@@ -33,6 +33,10 @@ jobs:
         run: |
           python -m pip install -e ".[dev]"
 
+      - name: Display package version
+        run: |
+          python -c "import querysaas; print('QuerySaaS version:', querysaas.__version__)"
+
       - name: Compile sources
         run: |
           python -m compileall src/querysaas tests examples
@@ -41,39 +45,110 @@ jobs:
         run: |
           python -m pytest -v
 
+      - name: Remove previous distributions
+        run: |
+          rm -rf build dist src/querysaas.egg-info
+
       - name: Build distributions
         run: |
           python -m build
+
+      - name: List distributions
+        run: |
+          find dist -maxdepth 1 -type f -print
 
       - name: Validate distributions
         run: |
           python -m twine check dist/*
 
-      - name: Verify FBDI registry in wheel
+      - name: Verify package version and FBDI registry
         shell: python
         run: |
           from pathlib import Path
+          import email
+          import re
           import zipfile
 
-          wheel = next(
-              Path("dist").glob(
-                  "querysaas-0.1.4-*.whl"
-              )
-          )
+          wheels = sorted(Path("dist").glob("querysaas-*.whl"))
 
-          expected = (
-              "querysaas/data/fbdi_jobs.csv"
-          )
+          if len(wheels) != 1:
+              raise SystemExit(
+                  "Expected exactly one QuerySaaS wheel, "
+                  f"but found {len(wheels)}: {wheels}"
+              )
+
+          wheel = wheels[0]
+          print("Validating wheel:", wheel)
+
+          expected_resource = "querysaas/data/fbdi_jobs.csv"
 
           with zipfile.ZipFile(wheel) as archive:
-              if expected not in archive.namelist():
+              members = archive.namelist()
+
+              if expected_resource not in members:
                   raise SystemExit(
-                      f"Missing resource: {expected}"
+                      f"Missing resource in wheel: {expected_resource}"
                   )
+
+              metadata_members = [
+                  name
+                  for name in members
+                  if name.endswith(".dist-info/METADATA")
+              ]
+
+              if len(metadata_members) != 1:
+                  raise SystemExit(
+                      "Expected exactly one METADATA file, "
+                      f"found: {metadata_members}"
+                  )
+
+              metadata_text = archive.read(
+                  metadata_members[0]
+              ).decode("utf-8")
+
+          metadata = email.message_from_string(metadata_text)
+          package_name = metadata.get("Name")
+          package_version = metadata.get("Version")
+
+          if package_name.casefold() != "querysaas":
+              raise SystemExit(
+                  f"Unexpected package name: {package_name}"
+              )
+
+          if package_version != "0.3.0":
+              raise SystemExit(
+                  "Expected package version 0.3.0, "
+                  f"found {package_version}"
+              )
+
+          filename_match = re.search(
+              r"querysaas-(\d+\.\d+\.\d+)-",
+              wheel.name,
+              re.IGNORECASE,
+          )
+
+          if not filename_match:
+              raise SystemExit(
+                  f"Unable to determine version from: {wheel.name}"
+              )
+
+          filename_version = filename_match.group(1)
+
+          if filename_version != package_version:
+              raise SystemExit(
+                  "Wheel filename and package metadata versions "
+                  f"do not match: {filename_version} != "
+                  f"{package_version}"
+              )
 
           print(
               "Wheel contains FBDI registry:",
-              expected,
+              expected_resource,
+          )
+          print(
+              "Validated package:",
+              package_name,
+              package_version,
           )
 
       - name: Upload distributions
@@ -103,6 +178,10 @@ jobs:
         with:
           name: python-package-distributions
           path: dist/
+
+      - name: Display files selected for publication
+        run: |
+          find dist -maxdepth 1 -type f -print
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
