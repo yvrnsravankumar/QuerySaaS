@@ -7,9 +7,74 @@ from .sql import OracleSqlPlanner, SqlPlan, count_query, limit_query, page_query
 from .exceptions import *
 install_pipeline_methods(FusionConnection)
 install_fbdi_methods(FusionConnection)
-__version__ = "0.1.4"
+__version__ = "0.3.0"
 __all__=['connect','FusionConnection','fusionconnect','build_auth_header','execute_query','provision_bip_report','SUPPORTED_PROVIDERS','PLANNED_PROVIDERS','OracleSqlPlanner','SqlPlan','CountQueryResult','LocalFileCopyResult','copy_fusion_to_local','copy_fusion_to_local_parallel','count_query','limit_query','page_query','validate_query']
 # QUERYSAAS-BIP-BEGIN
 from .bip import install_bip_methods
 install_bip_methods(FusionConnection)
 # QUERYSAAS-BIP-END
+# QUERYSAAS-AI-FOUNDATION-BEGIN
+from .ai import (
+    AiError,
+    AiConfigurationError,
+    AiSecurityError,
+    AiAuthenticationError,
+    AiProviderError,
+    AiProviderProfile,
+    AiResponse,
+    DEFAULT_AI_BASE_URLS,
+    SUPPORTED_AI_PROVIDERS,
+    normalize_ai_base_url,
+    redact_ai_context,
+    test_ai_connection,
+    generate_ai_text,
+)
+# QUERYSAAS-AI-FOUNDATION-END
+# QUERYSAAS-AI-SQL-SAFETY-BEGIN
+from .ai_sql import (
+    AiSqlError,
+    AiSqlExtractionError,
+    AiSqlSafetyError,
+    AiSqlClassification,
+    AiSqlResult,
+    extract_sql,
+    classify_sql,
+    enforce_read_only_sql,
+    build_oracle_sql_prompt,
+    generate_oracle_sql,
+)
+# QUERYSAAS-AI-SQL-SAFETY-END
+# QUERYSAAS-AI-PROFILES-CONTEXT-BEGIN
+from .ai_context import (
+    AiProfileError,
+    AiCredentialError,
+    AiContextError,
+    AiCredentialReference,
+    AiNamedProfile,
+    AiProfileStore,
+    OracleSchemaContext,
+    AiRequestPreview,
+    extract_referenced_tables,
+    validate_sql_schema_context,
+    preview_ai_sql_request,
+)
+# QUERYSAAS-AI-PROFILES-CONTEXT-END
+# QUERYSAAS-AI-SQL-REPAIR-BEGIN
+from .ai_repair import (
+    AiSqlRepairError,
+    OracleErrorContext,
+    AiSqlExplanation,
+    AiSqlRepairResult,
+    parse_oracle_error,
+    compare_sql,
+    build_sql_explanation_prompt,
+    explain_oracle_sql,
+    build_sql_repair_prompt,
+    repair_oracle_sql,
+)
+# QUERYSAAS-AI-SQL-REPAIR-END
+# QUERYSAAS-AI-0.3.0-BEGIN
+from .ai_repair import AiSqlRepairError, OracleErrorContext, AiSqlExplanation, AiSqlRepairResult, parse_oracle_error, compare_sql, explain_oracle_sql, repair_oracle_sql
+from .ai_enterprise import ENTERPRISE_DEFAULTS, enterprise_profile, generate_enterprise_text
+from .ai_runtime import AiCancelledError, AiCancellationToken, AiRetryPolicy, AiUsageTelemetry, generate_ai_text_resilient, iter_sse_text
+# QUERYSAAS-AI-0.3.0-END

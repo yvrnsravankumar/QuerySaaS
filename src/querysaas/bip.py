@@ -201,7 +201,260 @@ def copy_bip_object(self, destination_connection, source_report_absolute_path, d
     uploaded=destination_connection.upload_bip_object(destination_absolute_path,kind,downloaded["object_zipped_data"])
     safe_download={k:v for k,v in downloaded.items() if k!="object_zipped_data"}
     return {"success":bool(uploaded["success"]),"operation":"copy_bip_object","source_report_absolute_path":downloaded["report_absolute_path"],"destination_absolute_path":_path(destination_absolute_path),"object_type":kind,"object_size_bytes":downloaded["object_size_bytes"],"download":safe_download,"upload":uploaded}
+# QUERYSAAS-BIP-0.2-BEGIN
+class BIPObjectAlreadyExistsError(BIPCatalogError):
+    """Raised when an operation would overwrite an existing catalog object."""
 
+class BIPVerificationError(BIPCatalogError):
+    """Raised when a BI Publisher object cannot be verified."""
+
+class BIPDeleteError(BIPCatalogError):
+    """Raised when a BI Publisher object cannot be deleted safely."""
+
+class BIPReplaceError(BIPCatalogError):
+    """Raised when replacement or restoration fails."""
+
+class BIPScheduleError(BIPReportExecutionError):
+    """Raised when a BI Publisher schedule request fails."""
+
+
+def _bool_result(root, names):
+    element = _find(root, names)
+    raw = (element.text or "").strip() if element is not None else None
+    if raw is None:
+        return True, None
+    return raw.casefold() in {"true", "success", "successful", "1", "yes"}, raw
+
+
+def bip_object_exists(self, report_absolute_path):
+    """Return whether a BI Publisher catalog object can be downloaded."""
+    path = _path(report_absolute_path)
+    try:
+        result = self.download_bip_object(path)
+    except BIPObjectNotFoundError:
+        return False
+    except BIPSOAPFaultError as exc:
+        text = " ".join(
+            str(value or "") for value in (
+                getattr(exc, "soap_fault_reason", None),
+                getattr(exc, "oracle_message", None),
+                str(exc),
+            )
+        ).casefold()
+        if any(token in text for token in ("not found", "does not exist", "cannot find")):
+            return False
+        raise
+    return bool(result.get("success"))
+
+
+def verify_bip_object(self, report_absolute_path, object_type=None):
+    """Download and validate an object archive without writing it to disk."""
+    path = _path(report_absolute_path)
+    downloaded = self.download_bip_object(path)
+    data = _decode(downloaded)
+    inferred = downloaded.get("object_type") or "unknown"
+    expected = _object_type(object_type) if object_type is not None else inferred
+    if expected != "unknown" and inferred != "unknown" and expected != inferred:
+        raise BIPVerificationError(
+            f"BI Publisher object type mismatch for {path}: expected {expected}, received {inferred}."
+        )
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        names = [item.filename for item in archive.infolist() if not item.is_dir()]
+    if not names:
+        raise BIPVerificationError(f"BI Publisher object archive is empty: {path}")
+    return {
+        "success": True,
+        "operation": "verify_bip_object",
+        "report_absolute_path": path,
+        "object_type": inferred,
+        "object_size_bytes": len(data),
+        "member_count": len(names),
+        "members": names,
+    }
+
+
+def delete_bip_object(self, report_absolute_path, missing_ok=False):
+    """Delete one BI Publisher catalog object through deleteReportObject."""
+    if not isinstance(missing_ok, bool):
+        raise ValueError("missing_ok must be True or False.")
+    path = _path(report_absolute_path)
+    if not self.bip_object_exists(path):
+        if missing_ok:
+            return {"success": True, "operation": "deleteReportObject", "report_absolute_path": path, "deleted": False, "missing": True}
+        raise BIPObjectNotFoundError(f"BI Publisher object does not exist: {path}")
+    root = _transport(self, "deleteReportObject", [("reportAbsolutePath", path)])
+    success, raw = _bool_result(root, ["deleteReportObjectReturn", "deleteReportObjectResult", "return"])
+    if not success:
+        raise BIPDeleteError(f"BI Publisher did not confirm deletion of {path}: {raw}")
+    return {"success": True, "operation": "deleteReportObject", "report_absolute_path": path, "deleted": True, "missing": False, "oracle_result": raw}
+
+
+def plan_bip_object_copy(self, destination_connection, source_report_absolute_path, destination_absolute_path, object_type=None, overwrite=False):
+    """Return a read-only copy plan without downloading or uploading object data."""
+    if destination_connection is None or not callable(getattr(destination_connection, "bip_object_exists", None)):
+        raise TypeError("destination_connection must be an open QuerySaaS Fusion connection.")
+    if not isinstance(overwrite, bool):
+        raise ValueError("overwrite must be True or False.")
+    source = _path(source_report_absolute_path)
+    destination = _path(destination_absolute_path)
+    kind = _object_type(object_type) if object_type is not None else _archive_type(source)
+    source_exists = self.bip_object_exists(source)
+    destination_exists = destination_connection.bip_object_exists(destination)
+    if not source_exists:
+        action = "SOURCE_MISSING"
+    elif destination_exists and not overwrite:
+        action = "BLOCKED_DESTINATION_EXISTS"
+    elif destination_exists:
+        action = "REPLACE"
+    else:
+        action = "CREATE"
+    return {
+        "success": source_exists and action not in {"BLOCKED_DESTINATION_EXISTS"},
+        "operation": "plan_bip_object_copy",
+        "source_report_absolute_path": source,
+        "destination_absolute_path": destination,
+        "object_type": kind,
+        "source_exists": source_exists,
+        "destination_exists": destination_exists,
+        "overwrite": overwrite,
+        "action": action,
+    }
+
+
+def replace_bip_object(self, report_object_absolute_path_url, object_type, object_zipped_data, verify=True):
+    """Replace an object with in-memory backup and best-effort restoration."""
+    if not isinstance(verify, bool):
+        raise ValueError("verify must be True or False.")
+    destination = _path(report_object_absolute_path_url)
+    kind = _object_type(object_type)
+    replacement = _decode(object_zipped_data)
+    backup = self.download_bip_object(destination) if self.bip_object_exists(destination) else None
+    deleted = False
+    try:
+        if backup is not None:
+            self.delete_bip_object(destination)
+            deleted = True
+        upload = self.upload_bip_object(destination, kind, replacement)
+        if not upload.get("success"):
+            raise BIPReplaceError(f"BI Publisher upload did not confirm replacement of {destination}.")
+        verification = self.verify_bip_object(destination, kind) if verify else None
+        return {
+            "success": True,
+            "operation": "replace_bip_object",
+            "report_object_absolute_path_url": destination,
+            "object_type": kind,
+            "replaced_existing": backup is not None,
+            "backup_size_bytes": backup.get("object_size_bytes") if backup else None,
+            "upload": upload,
+            "verification": verification,
+            "restored": False,
+        }
+    except Exception as replace_error:
+        restored = False
+        restoration_error = None
+        if backup is not None and deleted:
+            try:
+                self.upload_bip_object(destination, backup["object_type"], backup["object_zipped_data"])
+                restored = True
+            except Exception as exc:
+                restoration_error = str(exc)
+        message = f"BI Publisher replacement failed for {destination}; restored={restored}."
+        if restoration_error:
+            message += f" Restoration also failed: {restoration_error}"
+        raise BIPReplaceError(message) from replace_error
+
+
+def copy_bip_object_v020(self, destination_connection, source_report_absolute_path, destination_absolute_path, object_type=None, *, overwrite=False, verify=True, dry_run=False):
+    """Copy an object with destination protection, verification, and dry-run planning."""
+    if not isinstance(overwrite, bool) or not isinstance(verify, bool) or not isinstance(dry_run, bool):
+        raise ValueError("overwrite, verify, and dry_run must be True or False.")
+    plan = self.plan_bip_object_copy(
+        destination_connection,
+        source_report_absolute_path,
+        destination_absolute_path,
+        object_type=object_type,
+        overwrite=overwrite,
+    )
+    if dry_run:
+        return plan
+    if not plan["source_exists"]:
+        raise BIPObjectNotFoundError(f"BI Publisher source object does not exist: {plan['source_report_absolute_path']}")
+    if plan["destination_exists"] and not overwrite:
+        raise BIPObjectAlreadyExistsError(f"BI Publisher destination already exists: {plan['destination_absolute_path']}")
+    downloaded = self.download_bip_object(plan["source_report_absolute_path"])
+    kind = _object_type(object_type) if object_type is not None else downloaded["object_type"]
+    if kind == "unknown":
+        raise BIPUnsupportedObjectTypeError("Unable to infer archive type; supply object_type as xdoz, xdmz, or xssz.")
+    if plan["destination_exists"]:
+        result = destination_connection.replace_bip_object(
+            plan["destination_absolute_path"], kind, downloaded["object_zipped_data"], verify=verify
+        )
+    else:
+        upload = destination_connection.upload_bip_object(
+            plan["destination_absolute_path"], kind, downloaded["object_zipped_data"]
+        )
+        verification = destination_connection.verify_bip_object(plan["destination_absolute_path"], kind) if verify else None
+        result = {"success": bool(upload.get("success")), "upload": upload, "verification": verification}
+    return {
+        "success": bool(result.get("success")),
+        "operation": "copy_bip_object",
+        "source_report_absolute_path": plan["source_report_absolute_path"],
+        "destination_absolute_path": plan["destination_absolute_path"],
+        "object_type": kind,
+        "object_size_bytes": downloaded["object_size_bytes"],
+        "action": plan["action"],
+        "overwrite": overwrite,
+        "verified": verify,
+        "result": result,
+    }
+
+
+def schedule_bip_report(self, report_absolute_path, *, output_format="pdf", parameters=None, job_name=None, user_job_desc=None, notify_when_success=False, notify_when_warning=False, notify_when_failed=False):
+    """Submit a BI Publisher report schedule request."""
+    path = _path(report_absolute_path)
+    if not isinstance(output_format, str) or not output_format.strip():
+        raise ValueError("output_format must be a non-empty string.")
+    if parameters is None:
+        parameters = {}
+    if not isinstance(parameters, dict):
+        raise TypeError("parameters must be a dictionary of parameter names and values.")
+    values = [("reportAbsolutePath", path), ("outputFormat", output_format.strip())]
+    if job_name:
+        values.append(("jobName", str(job_name).strip()))
+    if user_job_desc:
+        values.append(("userJobDesc", str(user_job_desc).strip()))
+    values.extend([
+        ("notifyWhenSuccess", str(bool(notify_when_success)).lower()),
+        ("notifyWhenWarning", str(bool(notify_when_warning)).lower()),
+        ("notifyWhenFailed", str(bool(notify_when_failed)).lower()),
+    ])
+    for name, value in parameters.items():
+        values.append(("parameterName", str(name)))
+        values.append(("parameterValue", "" if value is None else str(value)))
+    root = _transport(self, "scheduleReport", values)
+    element = _find(root, ["scheduleReportReturn", "jobID", "jobId", "return"])
+    schedule_id = "".join(element.itertext()).strip() if element is not None else ""
+    if not schedule_id:
+        raise BIPScheduleError(f"BI Publisher did not return a schedule ID for {path}.")
+    return {
+        "success": True,
+        "operation": "scheduleReport",
+        "report_absolute_path": path,
+        "schedule_id": schedule_id,
+        "output_format": output_format.strip(),
+        "parameter_count": len(parameters),
+    }
+# QUERYSAAS-BIP-0.2-END
 def install_bip_methods(cls):
-    cls.get_folder_contents=get_folder_contents; cls.download_bip_object=download_bip_object; cls.upload_bip_object=upload_bip_object
-    cls.extract_bip_object=extract_bip_object; cls.get_bip_object_xml=get_bip_object_xml; cls.copy_bip_object=copy_bip_object
+    cls.get_folder_contents = get_folder_contents
+    cls.download_bip_object = download_bip_object
+    cls.upload_bip_object = upload_bip_object
+    cls.extract_bip_object = extract_bip_object
+    cls.get_bip_object_xml = get_bip_object_xml
+    cls.bip_object_exists = bip_object_exists
+    cls.verify_bip_object = verify_bip_object
+    cls.delete_bip_object = delete_bip_object
+    cls.replace_bip_object = replace_bip_object
+    cls.plan_bip_object_copy = plan_bip_object_copy
+    cls.copy_bip_object = copy_bip_object_v020
+    cls.schedule_bip_report = schedule_bip_report
