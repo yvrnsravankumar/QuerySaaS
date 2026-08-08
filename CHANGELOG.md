@@ -1,5 +1,75 @@
 # Changelog
 
+## 0.3.0 - 2026-08-08
+
+- Consolidated stable AI assistant API.
+- Added SQL explanation and repair.
+- Added enterprise provider adapters.
+- Added retry, cancellation, SSE parsing, and usage telemetry.
+- Preserved read-only and schema-context safeguards.
+
+## 0.2.4 - 2026-08-08
+
+### Added
+- Safe Oracle error-code and message parsing.
+- Read-only SQL technical explanation through configured AI providers.
+- Oracle SQL repair using sanitized errors and approved schema context.
+- Structured before-and-after SQL comparison and unified diff.
+- Repaired-query read-only, planner, and schema-context validation.
+- Detection of unchanged repairs and unsafe provider output.
+
+### Security
+- Oracle errors are redacted before provider transmission.
+- Repair output cannot use write SQL or tables outside approved context.
+- Explanation and repair methods never execute SQL automatically.
+## 0.2.3 - 2026-08-08
+
+### Added
+- Named AI profiles with deterministic JSON persistence.
+- Environment-based credential references without serializing resolved secrets.
+- Validated Oracle schema context with table, column, exclusion, and size policies.
+- SQL referenced-table extraction and approved-context validation.
+- Redacted AI SQL request previews before provider transmission.
+- Atomic profile writes, duplicate protection, profile deletion, and case-insensitive lookup.
+
+### Security
+- Profile files contain credential reference names only, not API-key values.
+- Request previews never include resolved credentials.
+- Schema context can exclude sensitive columns before prompt construction.
+## 0.2.2 - 2026-08-08
+
+### Added
+- Oracle SQL extraction from fenced and plain AI responses.
+- Structured statement classification and risk reasons.
+- Read-only SELECT/WITH enforcement.
+- Multiple-statement, DML, DDL, PL/SQL, row-locking, network, file, scheduler, and dynamic-SQL blocking.
+- Oracle-aware assistant prompt construction with schema context.
+- Structured `AiSqlResult` and `AiSqlClassification` models.
+- `generate_oracle_sql()` for generation, extraction, classification, and validation without automatic execution.
+## 0.2.1 - 2026-08-08
+
+### Added
+- Provider-neutral AI profile and response models.
+- Configurable and validated provider Base URLs.
+- Local Ollama through its OpenAI-compatible chat endpoint.
+- OpenAI and guarded OpenAI-compatible chat providers.
+- Gemini REST text generation.
+- Provider connection testing through model discovery.
+- Recursive context credential redaction.
+- Redirect, remote HTTP, metadata endpoint, and unsafe network protections.
+## 0.2.0 - 2026-08-08
+
+### Added
+- BI Publisher object existence and archive verification.
+- Guarded catalog-object deletion.
+- Replacement with in-memory backup and best-effort restoration.
+- Read-only copy planning and dry-run support.
+- Protected cross-connection copy with overwrite and verification controls.
+- BI Publisher report scheduling.
+- Typed lifecycle, replacement, verification, and scheduling exceptions.
+
+### Changed
+- Package version synchronized across `pyproject.toml`, `querysaas.__version__`, README, tests, and release documentation.
 All notable changes to QuerySaaS are documented in this file.
 
 ## 0.1.3 - 2026-08-05
@@ -123,3 +193,10 @@ GitHub release baseline for the existing `querysaas` package. This release is ad
 - Included `data/*.csv` explicitly in wheel package data.
 - Preserved the packaged FBDI registry as a fallback when live metadata access is unavailable.
 <!-- QUERYSAAS-FBDI-REGISTRY-END -->
+
+## Documentation completed for 0.3.0
+
+- Added a comprehensive public API reference with executable examples.
+- Added detailed AI Assistant, BI Publisher, FBDI/ESS, architecture, security, and version-history guides.
+- Added a GitHub web-interface upload and release guide for environments without Git.
+- Replaced the root README with a concise 0.3.0 landing page linked to detailed documentation.
