@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 - 2026-08-09
+
+- Consolidated BI Publisher transport, lifecycle, scheduling, exceptions, redaction, and tests.
+- Added verified deletion and restoration, ambiguous-write verification, protected roots, read-only planning, and canonical copy.
+- Added ScheduleReportWSSService scheduling with nested parameters and notification controls.
+
 ## 0.3.1 - 2026-08-08
 
 ### Fixed
