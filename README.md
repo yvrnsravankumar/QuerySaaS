@@ -2,7 +2,7 @@
 
 QuerySaaS is a Python library for querying and synchronizing enterprise SaaS applications. The Oracle Fusion provider supports BI Publisher SQL execution, Oracle-aware SQL planning, DuckDB synchronization, local delimited-file extraction, FBDI import and purge workflows, ESS job submission and monitoring, BI Publisher catalog lifecycle operations, and a provider-neutral AI assistant foundation.
 
-**Current version: 0.3.0**
+**Current version: 0.3.1**
 
 Repository: <https://github.com/yvrnsravankumar/QuerySaaS>
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 - 2026-08-08
+
+### Fixed
+- Use the Oracle Fusion BI Publisher `deleteReport` SOAP operation.
+- Parse `deleteReportReturn` and `deleteReportResult` responses.
+- Retain legacy delete response element names as parsing fallbacks.
+- Keep SSO Bearer and Basic Authorization behavior unchanged.
 ## 0.3.0 - 2026-08-08
 
 - Consolidated stable AI assistant API.
