@@ -32,5 +32,5 @@ def test_extract_and_xml():
     c=client(None,envelope('')); r=c.extract_bip_object(archive()); assert r['member_count']==1
 def test_copy_reuses_methods():
     data=base64.b64encode(archive()).decode(); source=SimpleNamespace(download_bip_object=lambda p:{'success':True,'operation':'downloadReportObject','report_absolute_path':p,'object_type':'xdoz','object_size_bytes':len(archive()),'object_zipped_data':data})
-    target=SimpleNamespace(upload_bip_object=lambda p,t,d:{'success':True,'operation':'uploadReportObject','object_type':t,'object_size_bytes':len(archive())})
-    r=copy_bip_object(source,target,'/Custom/A.xdo','/Custom/B'); assert r['success'] and 'object_zipped_data' not in r['download']
+    target=SimpleNamespace(bip_object_exists=lambda p:False, upload_bip_object=lambda p,t,d:{'success':True,'operation':'uploadReportObject','object_type':t,'object_size_bytes':len(archive())}, verify_bip_object=lambda p,t:{'success':True,'object_type':t})
+    source.bip_object_exists=lambda p:True; r=copy_bip_object(source,target,'/Custom/A.xdo','/Custom/B',verify=True); assert r['success'] and 'object_zipped_data' not in str(r)

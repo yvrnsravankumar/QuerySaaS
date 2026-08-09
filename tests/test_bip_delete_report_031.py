@@ -36,13 +36,14 @@ def test_delete_uses_delete_report(monkeypatch):
         return response()
 
     monkeypatch.setattr(bip, "_transport", transport)
-    result = bip.delete_bip_object(item, "/Custom/Finance/Report.xdo")
+    result = bip.delete_bip_object(item, "/Custom/Finance/Report.xdo", verify=False)
 
     assert captured == {
         "operation": "deleteReport",
         "values": [("reportAbsolutePath", "/Custom/Finance/Report.xdo")],
     }
-    assert result["operation"] == "deleteReport"
+    assert result["operation"] == "delete_bip_object"
+    assert result["soap_operation"] == "deleteReport"
     assert result["oracle_result"] == "true"
 
 
@@ -69,7 +70,7 @@ def test_delete_legacy_response_is_accepted(monkeypatch):
         ),
     )
     assert bip.delete_bip_object(
-        item, "/Custom/Finance/Report.xdo"
+        item, "/Custom/Finance/Report.xdo", verify=False
     )["deleted"] is True
 
 
@@ -79,6 +80,7 @@ def test_delete_missing_ok(monkeypatch):
     result = bip.delete_bip_object(
         item, "/Custom/Finance/Missing.xdo", missing_ok=True
     )
-    assert result["operation"] == "deleteReport"
+    assert result["operation"] == "delete_bip_object"
+    assert result["soap_operation"] == "deleteReport"
     assert result["deleted"] is False
     assert result["missing"] is True
