@@ -1,6 +1,0 @@
-QuerySaaS 0.3.2 complete patch
-Backup: C:\Users\SravanYanamandra\Desktop\QuerySaaS_External_Backups\querysaas-pre-0.3.2-20260809-184129\repository
-Backup verified: YES
-Tests: PASSED
-Build: PASSED
-Published: NO
