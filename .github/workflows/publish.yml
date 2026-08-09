@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: publish-querysaas-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build QuerySaaS distributions
@@ -27,15 +31,15 @@ jobs:
       - name: Install packaging tools
         run: |
           python -m pip install --upgrade pip
-          python -m pip install build twine
+          python -m pip install --upgrade build twine
 
-      - name: Install QuerySaaS
+      - name: Install QuerySaaS with development dependencies
         run: |
           python -m pip install -e ".[dev]"
 
-      - name: Display package version
+      - name: Display package version and import path
         run: |
-          python -c "import querysaas; print('QuerySaaS version:', querysaas.__version__)"
+          python -c "import querysaas; print('QuerySaaS version:', querysaas.__version__); print('Import path:', querysaas.__file__)"
 
       - name: Compile sources
         run: |
@@ -47,7 +51,9 @@ jobs:
 
       - name: Remove previous distributions
         run: |
-          rm -rf build dist src/querysaas.egg-info
+          rm -rf build
+          rm -rf dist
+          rm -rf src/querysaas.egg-info
 
       - name: Build distributions
         run: |
@@ -57,7 +63,7 @@ jobs:
         run: |
           find dist -maxdepth 1 -type f -print
 
-      - name: Validate distributions
+      - name: Validate distributions with Twine
         run: |
           python -m twine check dist/*
 
@@ -69,7 +75,11 @@ jobs:
           import re
           import zipfile
 
-          wheels = sorted(Path("dist").glob("querysaas-*.whl"))
+          dist_directory = Path("dist")
+
+          wheels = sorted(
+              dist_directory.glob("querysaas-*.whl")
+          )
 
           if len(wheels) != 1:
               raise SystemExit(
@@ -78,78 +88,227 @@ jobs:
               )
 
           wheel = wheels[0]
-          print("Validating wheel:", wheel)
 
-          expected_resource = "querysaas/data/fbdi_jobs.csv"
+          print(
+              "Validating wheel:",
+              wheel,
+          )
+
+          expected_resource = (
+              "querysaas/data/fbdi_jobs.csv"
+          )
 
           with zipfile.ZipFile(wheel) as archive:
               members = archive.namelist()
 
               if expected_resource not in members:
                   raise SystemExit(
-                      f"Missing resource in wheel: {expected_resource}"
+                      "Missing resource in wheel: "
+                      f"{expected_resource}"
                   )
 
               metadata_members = [
                   name
                   for name in members
-                  if name.endswith(".dist-info/METADATA")
+                  if name.endswith(
+                      ".dist-info/METADATA"
+                  )
               ]
 
               if len(metadata_members) != 1:
                   raise SystemExit(
-                      "Expected exactly one METADATA file, "
-                      f"found: {metadata_members}"
+                      "Expected exactly one METADATA "
+                      "file, but found: "
+                      f"{metadata_members}"
                   )
 
               metadata_text = archive.read(
                   metadata_members[0]
               ).decode("utf-8")
 
-          metadata = email.message_from_string(metadata_text)
+          metadata = email.message_from_string(
+              metadata_text
+          )
+
           package_name = metadata.get("Name")
           package_version = metadata.get("Version")
 
+          if not package_name:
+              raise SystemExit(
+                  "Package name is missing from "
+                  "wheel metadata."
+              )
+
           if package_name.casefold() != "querysaas":
               raise SystemExit(
-                  f"Unexpected package name: {package_name}"
+                  "Unexpected package name: "
+                  f"{package_name}"
               )
 
-          if package_version != "0.3.0":
+          if not package_version:
               raise SystemExit(
-                  "Expected package version 0.3.0, "
-                  f"found {package_version}"
+                  "Package version is missing from "
+                  "wheel metadata."
               )
 
-          filename_match = re.search(
-              r"querysaas-(\d+\.\d+\.\d+)-",
+          filename_match = re.fullmatch(
+              r"querysaas-"
+              r"(\d+\.\d+\.\d+)"
+              r"-[^/]+\.whl",
               wheel.name,
               re.IGNORECASE,
           )
 
           if not filename_match:
               raise SystemExit(
-                  f"Unable to determine version from: {wheel.name}"
+                  "Unable to determine the package "
+                  "version from wheel filename: "
+                  f"{wheel.name}"
               )
 
-          filename_version = filename_match.group(1)
+          filename_version = (
+              filename_match.group(1)
+          )
 
           if filename_version != package_version:
               raise SystemExit(
-                  "Wheel filename and package metadata versions "
-                  f"do not match: {filename_version} != "
+                  "Wheel filename and embedded metadata "
+                  "versions do not match: "
+                  f"{filename_version} != "
                   f"{package_version}"
+              )
+
+          source_distributions = sorted(
+              dist_directory.glob(
+                  "querysaas-*.tar.gz"
+              )
+          )
+
+          if len(source_distributions) != 1:
+              raise SystemExit(
+                  "Expected exactly one QuerySaaS "
+                  "source distribution, but found "
+                  f"{len(source_distributions)}: "
+                  f"{source_distributions}"
+              )
+
+          source_distribution = (
+              source_distributions[0]
+          )
+
+          expected_source_name = (
+              "querysaas-"
+              f"{package_version}.tar.gz"
+          )
+
+          if (
+              source_distribution.name
+              != expected_source_name
+          ):
+              raise SystemExit(
+                  "Unexpected source distribution: "
+                  f"{source_distribution.name}; "
+                  f"expected {expected_source_name}"
               )
 
           print(
               "Wheel contains FBDI registry:",
               expected_resource,
           )
+
           print(
               "Validated package:",
               package_name,
               package_version,
           )
+
+          print(
+              "Validated source distribution:",
+              source_distribution,
+          )
+
+      - name: Verify release tag matches package version
+        if: github.event_name == 'release'
+        shell: python
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          from pathlib import Path
+          import email
+          import os
+          import zipfile
+
+          tag = os.environ["RELEASE_TAG"].strip()
+
+          wheels = sorted(
+              Path("dist").glob(
+                  "querysaas-*.whl"
+              )
+          )
+
+          if len(wheels) != 1:
+              raise SystemExit(
+                  "Expected exactly one wheel."
+              )
+
+          with zipfile.ZipFile(
+              wheels[0]
+          ) as archive:
+              metadata_name = next(
+                  name
+                  for name in archive.namelist()
+                  if name.endswith(
+                      ".dist-info/METADATA"
+                  )
+              )
+
+              metadata_text = archive.read(
+                  metadata_name
+              ).decode("utf-8")
+
+          metadata = email.message_from_string(
+              metadata_text
+          )
+
+          package_version = metadata.get(
+              "Version"
+          )
+
+          expected_tag = f"v{package_version}"
+
+          if tag != expected_tag:
+              raise SystemExit(
+                  "Release tag and package version "
+                  "do not match: "
+                  f"{tag} != {expected_tag}"
+              )
+
+          print(
+              "Release tag matches package version:",
+              tag,
+          )
+
+      - name: Generate distribution hashes
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib
+
+          for distribution in sorted(
+              Path("dist").iterdir()
+          ):
+              if not distribution.is_file():
+                  continue
+
+              digest = hashlib.sha256(
+                  distribution.read_bytes()
+              ).hexdigest()
+
+              print(
+                  f"{distribution.name}"
+                  f"\n  bytes: {distribution.stat().st_size}"
+                  f"\n  sha256: {digest}"
+              )
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
