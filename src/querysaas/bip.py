@@ -274,19 +274,55 @@ def verify_bip_object(self, report_absolute_path, object_type=None):
 
 
 def delete_bip_object(self, report_absolute_path, missing_ok=False):
-    """Delete one BI Publisher catalog object through deleteReportObject."""
+    """Delete one BI Publisher report through the deleteReport SOAP operation."""
     if not isinstance(missing_ok, bool):
         raise ValueError("missing_ok must be True or False.")
+
     path = _path(report_absolute_path)
+
     if not self.bip_object_exists(path):
         if missing_ok:
-            return {"success": True, "operation": "deleteReportObject", "report_absolute_path": path, "deleted": False, "missing": True}
-        raise BIPObjectNotFoundError(f"BI Publisher object does not exist: {path}")
-    root = _transport(self, "deleteReportObject", [("reportAbsolutePath", path)])
-    success, raw = _bool_result(root, ["deleteReportObjectReturn", "deleteReportObjectResult", "return"])
+            return {
+                "success": True,
+                "operation": "deleteReport",
+                "report_absolute_path": path,
+                "deleted": False,
+                "missing": True,
+            }
+        raise BIPObjectNotFoundError(
+            f"BI Publisher object does not exist: {path}"
+        )
+
+    root = _transport(
+        self,
+        "deleteReport",
+        [("reportAbsolutePath", path)],
+    )
+
+    success, raw = _bool_result(
+        root,
+        [
+            "deleteReportReturn",
+            "deleteReportResult",
+            "deleteReportObjectReturn",
+            "deleteReportObjectResult",
+            "return",
+        ],
+    )
+
     if not success:
-        raise BIPDeleteError(f"BI Publisher did not confirm deletion of {path}: {raw}")
-    return {"success": True, "operation": "deleteReportObject", "report_absolute_path": path, "deleted": True, "missing": False, "oracle_result": raw}
+        raise BIPDeleteError(
+            f"BI Publisher did not confirm deletion of {path}: {raw}"
+        )
+
+    return {
+        "success": True,
+        "operation": "deleteReport",
+        "report_absolute_path": path,
+        "deleted": True,
+        "missing": False,
+        "oracle_result": raw,
+    }
 
 
 def plan_bip_object_copy(self, destination_connection, source_report_absolute_path, destination_absolute_path, object_type=None, overwrite=False):
