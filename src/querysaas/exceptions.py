@@ -31,14 +31,49 @@ class PipelineSchemaError(PipelineError):
         super().__init__(message); self.expected_columns=tuple(expected_columns); self.actual_columns=tuple(actual_columns); self.offset=offset; self.limit=limit; self.filename=filename
     def __str__(self): return f"{super().__str__()} [offset={self.offset}, expected={self.expected_columns}, actual={self.actual_columns}, filename={self.filename}]"
 
-
 # Canonical BI Publisher exception hierarchy.
-class BIPOperationError(BIPublisherError):
-    """Base class for BI Publisher operational failures with safe metadata."""
+_SENSITIVE_METADATA_TOKENS = (
+    "token", "authorization", "password", "cookie", "secret", "api_key",
+    "base64", "payload", "zipped", "archive", "object_zipped_data",
+    "p_b64_content", "notification_to", "recipient",
+)
 
-    def __init__(self, message, *, operation=None, report_absolute_path=None,
-                 status_code=None, soap_fault_code=None, soap_fault_reason=None,
-                 oracle_error_code=None, oracle_message=None, metadata=None):
+
+def _sanitize_bip_metadata(value):
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            name = str(key)
+            if any(token in name.casefold() for token in _SENSITIVE_METADATA_TOKENS):
+                result[name] = "[REDACTED]"
+            else:
+                result[name] = _sanitize_bip_metadata(item)
+        return result
+    if isinstance(value, (list, tuple, set)):
+        return [_sanitize_bip_metadata(item) for item in value]
+    if isinstance(value, BaseException):
+        return str(value)
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return repr(value)
+
+
+class BIPOperationError(BIPublisherError):
+    """Base class for BI Publisher failures with safe structured metadata."""
+
+    def __init__(
+        self,
+        message,
+        *,
+        operation=None,
+        report_absolute_path=None,
+        status_code=None,
+        soap_fault_code=None,
+        soap_fault_reason=None,
+        oracle_error_code=None,
+        oracle_message=None,
+        metadata=None,
+    ):
         super().__init__(message)
         self.operation = operation
         self.report_absolute_path = report_absolute_path
@@ -48,6 +83,20 @@ class BIPOperationError(BIPublisherError):
         self.oracle_error_code = oracle_error_code
         self.oracle_message = oracle_message
         self.metadata = dict(metadata or {})
+
+    def to_dict(self):
+        return _sanitize_bip_metadata({
+            "type": type(self).__name__,
+            "message": str(self),
+            "operation": self.operation,
+            "report_absolute_path": self.report_absolute_path,
+            "status_code": self.status_code,
+            "soap_fault_code": self.soap_fault_code,
+            "soap_fault_reason": self.soap_fault_reason,
+            "oracle_error_code": self.oracle_error_code,
+            "oracle_message": self.oracle_message,
+            "metadata": dict(self.metadata),
+        })
 
 
 class BIPAuthenticationError(BIPOperationError): pass
@@ -65,13 +114,27 @@ class BIPInvalidBase64Error(BIPCatalogError): pass
 class BIPUploadError(BIPCatalogError): pass
 class BIPDeleteError(BIPCatalogError): pass
 class BIPVerificationError(BIPCatalogError): pass
+class BIPRestoreError(BIPCatalogError): pass
+class BIPScheduleError(BIPOperationError): pass
+class BIPReportExecutionError(BIPOperationError): pass
 
 
 class BIPReplaceError(BIPCatalogError):
-    def __init__(self, message, *, object_type=None, deleted=False,
-                 restore_attempted=False, restored=False,
-                 replacement_error=None, restoration_error=None,
-                 restoration_verification=None, **kwargs):
+    """Replacement failure with rollback and restoration diagnostics."""
+
+    def __init__(
+        self,
+        message,
+        *,
+        object_type=None,
+        deleted=False,
+        restore_attempted=False,
+        restored=False,
+        replacement_error=None,
+        restoration_error=None,
+        restoration_verification=None,
+        **kwargs,
+    ):
         super().__init__(message, **kwargs)
         self.object_type = object_type
         self.deleted = bool(deleted)
@@ -81,7 +144,15 @@ class BIPReplaceError(BIPCatalogError):
         self.restoration_error = restoration_error
         self.restoration_verification = restoration_verification
 
-
-class BIPRestoreError(BIPCatalogError): pass
-class BIPScheduleError(BIPOperationError): pass
-class BIPReportExecutionError(BIPOperationError): pass
+    def to_dict(self):
+        result = super().to_dict()
+        result.update(_sanitize_bip_metadata({
+            "object_type": self.object_type,
+            "deleted": self.deleted,
+            "restore_attempted": self.restore_attempted,
+            "restored": self.restored,
+            "replacement_error": str(self.replacement_error) if self.replacement_error is not None else None,
+            "restoration_error": str(self.restoration_error) if self.restoration_error is not None else None,
+            "restoration_verification": self.restoration_verification,
+        }))
+        return result

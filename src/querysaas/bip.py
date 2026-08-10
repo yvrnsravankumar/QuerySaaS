@@ -460,21 +460,6 @@ def get_bip_object_xml(self, report_absolute_path, member_name=None, include_non
         return {**base,"member_name":member_name,**result[member_name]}
     return {**base,"member_count":len(result),"members":result}
 
-class BIPObjectAlreadyExistsError(BIPCatalogError):
-    """Raised when an operation would overwrite an existing catalog object."""
-
-class BIPVerificationError(BIPCatalogError):
-    """Raised when a BI Publisher object cannot be verified."""
-
-class BIPDeleteError(BIPCatalogError):
-    """Raised when a BI Publisher object cannot be deleted safely."""
-
-class BIPReplaceError(BIPCatalogError):
-    """Raised when replacement or restoration fails."""
-
-class BIPScheduleError(BIPReportExecutionError):
-    """Raised when a BI Publisher schedule request fails."""
-
 
 def _bool_result(root, names):
     element = _find(root, names)
@@ -499,12 +484,15 @@ def bip_object_exists(self, report_absolute_path):
 
 
 
+
 def verify_bip_object(self, report_absolute_path, object_type=None, verification_mode="readable"):
-    """Verify readability and object-type compatibility; raw ZIP equality is optional."""
+    """Verify archive readability and object-type compatibility."""
     path = _path(report_absolute_path)
     mode = str(verification_mode or "").strip().casefold()
-    if mode not in {"readable", "primary_content", "nonvolatile_members", "raw_archive"}:
-        raise ValueError("Unsupported verification_mode.")
+    if mode != "readable":
+        raise ValueError(
+            "QuerySaaS 0.3.2 supports only verification_mode='readable'."
+        )
     downloaded = self.download_bip_object(path)
     archive_data = _decode(downloaded)
     inferred = downloaded.get("object_type") or "unknown"
@@ -540,6 +528,7 @@ def verify_bip_object(self, report_absolute_path, object_type=None, verification
         "members": members,
         "verification_mode": mode,
     }
+
 
 
 def delete_bip_object(
@@ -759,15 +748,20 @@ def replace_bip_object(
             f"BI Publisher replacement failed for {destination}; restored={restored}.",
             operation="replace_bip_object",
             report_absolute_path=destination,
+            object_type=kind,
+            deleted=deleted,
+            restore_attempted=restore_attempted,
+            restored=restored,
+            replacement_error=replacement_error,
+            restoration_error=restoration_error,
+            restoration_verification=_safe_metadata(restoration_verification),
+            metadata={
+                "target_existed": existed,
+                "verification_requested": verify,
+            },
         )
-        error.object_type = kind
-        error.deleted = deleted
-        error.restore_attempted = restore_attempted
-        error.restored = restored
-        error.replacement_error = replacement_error
-        error.restoration_error = restoration_error
-        error.restoration_verification = _safe_metadata(restoration_verification)
         raise error from replacement_error
+
 
 
 def copy_bip_object(
@@ -780,11 +774,14 @@ def copy_bip_object(
     overwrite=False,
     verify=True,
     dry_run=False,
+    timeout=10,
+    poll_interval=0.5,
 ):
     """Plan and execute CREATE or REPLACE without exposing archive payloads."""
     _validate_bool("overwrite", overwrite)
     _validate_bool("verify", verify)
     _validate_bool("dry_run", dry_run)
+    _validate_polling(timeout, poll_interval)
     plan = plan_bip_object_copy(
         self,
         destination_connection,
@@ -813,12 +810,15 @@ def copy_bip_object(
         raise BIPUnsupportedObjectTypeError(
             "Unable to infer archive type; supply object_type as xdoz, xdmz, or xssz."
         )
+    destination = plan["destination_absolute_path"]
     if plan["action"] == "REPLACE":
         result = destination_connection.replace_bip_object(
-            plan["destination_absolute_path"],
+            destination,
             kind,
             downloaded["object_zipped_data"],
             verify=verify,
+            timeout=timeout,
+            poll_interval=poll_interval,
         )
     else:
         upload = None
@@ -826,34 +826,59 @@ def copy_bip_object(
         verification = None
         try:
             upload = destination_connection.upload_bip_object(
-                plan["destination_absolute_path"], kind, downloaded["object_zipped_data"]
+                destination, kind, downloaded["object_zipped_data"]
             )
         except Exception as exc:
             upload_error = exc
-        if verify or upload_error is not None or not (upload or {}).get("success"):
+        confirmed = bool((upload or {}).get("success"))
+        needs_verification = verify or upload_error is not None or not confirmed
+        if needs_verification:
+            # Readability is stronger evidence than an existence probe. Verify once
+            # immediately for compatibility with Fusion environments where the
+            # download/read path becomes available before existence probes agree.
+            immediate_verification_error = None
             try:
-                verification = destination_connection.verify_bip_object(
-                    plan["destination_absolute_path"], kind
+                verification = destination_connection.verify_bip_object(destination, kind)
+            except Exception as exc:
+                immediate_verification_error = exc
+
+            if not (verification and verification.get("success")):
+                available = _wait_for_state(
+                    destination_connection,
+                    destination,
+                    exists=True,
+                    timeout=timeout,
+                    poll_interval=poll_interval,
                 )
-            except Exception:
-                if upload_error is not None:
-                    raise upload_error
-                raise
+                if not available:
+                    if upload_error is not None:
+                        raise upload_error
+                    raise BIPVerificationError(
+                        f"Created BI Publisher object did not become available: {destination}",
+                        operation="copy_bip_object",
+                        report_absolute_path=destination,
+                        metadata={"timeout": timeout, "poll_interval": poll_interval},
+                    ) from immediate_verification_error
+                verification = destination_connection.verify_bip_object(destination, kind)
         if verification and verification.get("success"):
+            warning = _warning(upload_error) if upload_error is not None else (
+                None if confirmed else {
+                    "type": "AmbiguousUploadResult",
+                    "message": "Oracle did not positively confirm the upload, but the destination was verified.",
+                }
+            )
             result = {
                 "success": True,
                 "action": "CREATE",
                 "upload": upload,
-                "upload_warning": _warning(upload_error) if upload_error else (
-                    None if (upload or {}).get("success") else {"type": "AmbiguousUploadResult", "message": "Oracle did not positively confirm the upload."}
-                ),
+                "upload_warning": warning,
                 "verification": verification,
             }
         elif upload_error is not None:
             raise upload_error
         else:
             result = {
-                "success": bool((upload or {}).get("success")),
+                "success": confirmed,
                 "action": "CREATE",
                 "upload": upload,
                 "upload_warning": None,
@@ -863,14 +888,15 @@ def copy_bip_object(
         "success": bool(result.get("success")),
         "operation": "copy_bip_object",
         "source_report_absolute_path": plan["source_report_absolute_path"],
-        "destination_absolute_path": plan["destination_absolute_path"],
+        "destination_absolute_path": destination,
         "object_type": kind,
         "object_size_bytes": downloaded["object_size_bytes"],
         "action": plan["action"],
         "overwrite": overwrite,
-        "verified": bool(result.get("verification")) if verify else False,
+        "verified": bool(result.get("verification")),
         "result": _safe_metadata(result),
     }
+
 
 
 
@@ -1072,9 +1098,9 @@ def schedule_bip_report(
     notification_user_name=None,
     notification_to=None,
     notify_when_success=False,
-    notify_when_failed=True,
+    notify_when_failed=False,
     notify_when_skipped=False,
-    notify_when_warning=True,
+    notify_when_warning=False,
     save_data=True,
     save_output=True,
     schedule_public=True,
@@ -1124,10 +1150,15 @@ def schedule_bip_report(
         "warning": notify_when_warning,
     }
     notifications_enabled = any(notification_events.values())
-    if notifications_enabled and notification_to is None:
-        raise ValueError(
-            "notification_to is required when any notification event is enabled."
-        )
+    if notifications_enabled:
+        if notification_to is None:
+            raise ValueError(
+                "notification_to is required when notifications are enabled."
+            )
+        if notification_user_name is None:
+            raise ValueError(
+                "notification_user_name is required when notifications are enabled."
+            )
 
     payload = _schedule_envelope(
         path,
