@@ -1,6 +1,38 @@
 # Changelog
+## 0.3.3 - 2026-08-09
+
+### Added
+- Metadata-aware BI Publisher exceptions with safe `to_dict()` serialization.
+- CREATE destination-availability and readability handling with timeout controls.
+- Regression coverage for ambiguous uploads, delayed visibility, and committed readable targets.
+
+### Fixed
+- Duplicate BI Publisher exception class identity in `bip.py`.
+- Fully initialized replacement diagnostics and preserved exception cause chains.
+- CREATE propagation timing without duplicate upload attempts.
+- Replacement handling so readable committed targets are not rolled back.
+- Scheduling notification defaults so notifications are opt-in.
+- Verification-mode advertising so only `readable` is accepted.
+
+### Security
+- Redacted tokens, credentials, archive payloads, `P_B64_CONTENT`, and recipient metadata in serialized exceptions.
+- Retained recipient masking and omission of scheduling parameter values from public results.
+
+### Validation
+- Oracle integration tests remain opt-in and were not run without credentials.
+- No QuerySaaS Studio files or installed Studio packages were modified.
+
 
 ## 0.3.2 - 2026-08-09
+
+### 0.3.2 BI Publisher correctness update
+
+- Added metadata-aware, redacted BI Publisher exception serialization.
+- Removed duplicate exception declarations from `bip.py`.
+- Added CREATE visibility polling and timeout propagation.
+- Preserved readable committed replacements after ambiguous uploads or upload exceptions.
+- Made scheduling notifications opt-in and required explicit recipient and username when enabled.
+- Restricted verification modes to the implemented `readable` contract.
 
 - Consolidated BI Publisher transport, lifecycle, scheduling, exceptions, redaction, and tests.
 - Added verified deletion and restoration, ambiguous-write verification, protected roots, read-only planning, and canonical copy.
