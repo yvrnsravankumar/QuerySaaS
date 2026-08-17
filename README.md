@@ -2,7 +2,7 @@
 
 QuerySaaS is a Python library for querying and synchronizing enterprise SaaS applications. The Oracle Fusion provider supports BI Publisher SQL execution, Oracle-aware SQL planning, DuckDB synchronization, local delimited-file extraction, FBDI import and purge workflows, ESS job submission and monitoring, BI Publisher catalog lifecycle operations, and a provider-neutral AI assistant foundation.
 
-**Current version: 0.3.3**
+**Current version: 0.3.4**
 
 Repository: <https://github.com/yvrnsravankumar/QuerySaaS>
 
@@ -201,3 +201,7 @@ The 0.3.2 source uses canonical metadata-aware exceptions, readable verification
 ## QuerySaaS 0.3.3
 
 Version 0.3.3 republishes the corrected BI Publisher consolidation after the original 0.3.2 release. It provides canonical metadata-aware BI Publisher exceptions, safe `to_dict()` serialization, CREATE eventual-consistency polling, readable committed-write preservation, verified restoration, readable-only verification, and opt-in scheduling notifications.
+
+
+## Local Data Library
+Query CSV, TSV, and Parquet files by filename without extensions. Exact names with spaces use double quotes, for example `SELECT * FROM "Sales Data"`; normalized aliases such as `sales_data` are also available. See [Local Data Library](docs/LOCAL_DATA_LIBRARY.md).

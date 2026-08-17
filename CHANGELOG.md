@@ -1,4 +1,12 @@
 # Changelog
+## 0.3.4 - 2026-08-17
+### Added
+- DuckDB-backed Local Data Library for CSV, TSV, and Parquet folders.
+- Exact quoted filename aliases and normalized SQL-safe aliases.
+- Managed-table DML, transactional execution, discovery, preview, materialization, and export methods.
+- CSV, TSV, and Parquet export support.
+### Preserved
+- All existing QuerySaaS public methods and behavior.
 ## 0.3.3 - 2026-08-09
 
 ### Added
