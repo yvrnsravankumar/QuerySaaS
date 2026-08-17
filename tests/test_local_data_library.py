@@ -1,4 +1,5 @@
 from pathlib import Path
+import duckdb
 import pandas as pd
 import pytest
 from querysaas import open_data_library
@@ -7,7 +8,20 @@ from querysaas.exceptions import LocalDataReadOnlyError
 def test_filename_aliases_query_dml_and_export(tmp_path):
     pd.DataFrame({"id":[1,2],"amount":[10,20]}).to_csv(tmp_path/"Sales Data.csv",index=False)
     pd.DataFrame({"id":[1,2],"name":["A","B"]}).to_csv(tmp_path/"Customers.tsv",sep="\t",index=False)
-    pd.DataFrame({"id":[1,2],"status":["N","Y"]}).to_parquet(tmp_path/"Orders.parquet",index=False)
+    parquet_path = str(tmp_path / "Orders.parquet").replace("\\", "/")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute(
+            f"""
+            COPY (
+                SELECT *
+                FROM (VALUES (1, 'N'), (2, 'Y')) AS orders(id, status)
+            )
+            TO '{parquet_path}' (FORMAT PARQUET)
+            """
+        )
+    finally:
+        connection.close()
     with open_data_library(tmp_path,database=tmp_path/"library.duckdb") as db:
         assert len(db.query('SELECT * FROM "Sales Data"'))==2
         assert len(db.query('SELECT * FROM sales_data'))==2
