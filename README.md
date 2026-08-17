@@ -2,7 +2,7 @@
 
 QuerySaaS is a Python library for querying and synchronizing enterprise SaaS applications. The Oracle Fusion provider supports BI Publisher SQL execution, Oracle-aware SQL planning, DuckDB synchronization, local delimited-file extraction, FBDI import and purge workflows, ESS job submission and monitoring, BI Publisher catalog lifecycle operations, and a provider-neutral AI assistant foundation.
 
-**Current version: 0.3.4**
+**Current version: 0.3.5**
 
 Repository: <https://github.com/yvrnsravankumar/QuerySaaS>
 
@@ -205,3 +205,19 @@ Version 0.3.3 republishes the corrected BI Publisher consolidation after the ori
 
 ## Local Data Library
 Query CSV, TSV, and Parquet files by filename without extensions. Exact names with spaces use double quotes, for example `SELECT * FROM "Sales Data"`; normalized aliases such as `sales_data` are also available. See [Local Data Library](docs/LOCAL_DATA_LIBRARY.md).
+
+
+## Network retry standard
+
+QuerySaaS 0.3.5 exposes a consistent retry contract on network-bound query, extraction, BI Publisher read, FBDI registry read, and ESS monitoring operations:
+
+```python
+result = fusion.executequery(
+    sql,
+    max_retries=3,
+    retry_base_seconds=1.0,
+    retry_max_seconds=30.0,
+)
+```
+
+`max_retries=3` means one initial request plus at most three retries. QuerySaaS retries recognized transient connection failures and HTTP 408, 429, 500, 502, 503, and 504 responses. Authentication, authorization, validation, protected-operation, schema, and cancellation failures are not retried. Local Data Library methods remain local-only and do not expose network retry parameters.

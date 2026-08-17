@@ -1,4 +1,20 @@
 # Changelog
+## 0.3.5 - 2026-08-17
+
+### Added
+- Consistent `max_retries=3`, `retry_base_seconds=1.0`, and `retry_max_seconds=30.0` parameters for approved network-bound methods.
+- Shared capped exponential-backoff retry policy with jitter.
+- Retry exhaustion metadata for structured operational exceptions when supported.
+- Signature and behavior regression tests for query, extraction, BI Publisher read, FBDI registry read, and ESS monitoring methods.
+
+### Changed
+- Network query retry defaults are standardized to three retries, meaning four total attempts.
+- Parallel file and DuckDB extraction operations inherit the same page-level retry contract.
+
+### Security
+- Authentication, authorization, invalid SQL, protected operations, schema mismatches, and cancellations are never retried automatically.
+- Local Data Library methods remain outside the network retry layer.
+
 ## 0.3.4 - 2026-08-17
 ### Added
 - DuckDB-backed Local Data Library for CSV, TSV, and Parquet folders.
