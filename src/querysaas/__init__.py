@@ -7,7 +7,7 @@ from .sql import OracleSqlPlanner, SqlPlan, count_query, limit_query, page_query
 from .exceptions import *
 install_pipeline_methods(FusionConnection)
 install_fbdi_methods(FusionConnection)
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 __all__=['connect','FusionConnection','fusionconnect','build_auth_header','execute_query','provision_bip_report','SUPPORTED_PROVIDERS','PLANNED_PROVIDERS','OracleSqlPlanner','SqlPlan','CountQueryResult','LocalFileCopyResult','copy_fusion_to_local','copy_fusion_to_local_parallel','count_query','limit_query','page_query','validate_query']
 # QUERYSAAS-BIP-BEGIN
 from .bip import install_bip_methods
@@ -79,3 +79,26 @@ from .ai_enterprise import ENTERPRISE_DEFAULTS, enterprise_profile, generate_ent
 from .ai_runtime import AiCancelledError, AiCancellationToken, AiRetryPolicy, AiUsageTelemetry, generate_ai_text_resilient, iter_sse_text
 # QUERYSAAS-AI-0.3.0-END
 from .local_data import LocalDataFile, LocalSqlResult, LocalDataLibrary, open_data_library
+
+
+from .network_retry import (
+    NetworkRetryPolicy,
+    install_network_retry_methods,
+    retry_network_call,
+    validate_retry_options,
+    wrap_retryable_network_function,
+)
+
+# Apply retries only after pipeline, BI Publisher, and FBDI methods are registered.
+install_network_retry_methods(FusionConnection)
+
+# Preserve standalone public functions while exposing the same retry contract.
+execute_query = wrap_retryable_network_function(execute_query, "execute_query")
+copy_fusion_to_local = wrap_retryable_network_function(
+    copy_fusion_to_local,
+    "copy_fusion_to_local",
+)
+copy_fusion_to_local_parallel = wrap_retryable_network_function(
+    copy_fusion_to_local_parallel,
+    "copy_fusion_to_local_parallel",
+)
