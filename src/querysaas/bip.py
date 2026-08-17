@@ -948,53 +948,53 @@ def _schedule_envelope(
     operation = ET.SubElement(body, f"{{{SCHEDULE_REPORT_NS}}}scheduleReport")
     schedule_request = ET.SubElement(
         operation,
-        f"{{{SCHEDULE_REPORT_NS}}}scheduleRequest",
+        "scheduleRequest",
     )
     report_request = ET.SubElement(
         schedule_request,
-        f"{{{SCHEDULE_REPORT_NS}}}reportRequest",
+        "reportRequest",
     )
 
     attribute_format = ET.SubElement(
         report_request,
-        f"{{{SCHEDULE_REPORT_NS}}}attributeFormat",
+        "attributeFormat",
     )
     attribute_format.text = output_format
 
     parameter_name_values = ET.SubElement(
         report_request,
-        f"{{{SCHEDULE_REPORT_NS}}}parameterNameValues",
+        "parameterNameValues",
     )
     for name, values in parameters:
         parameter_item = ET.SubElement(
             parameter_name_values,
-            f"{{{SCHEDULE_REPORT_NS}}}item",
+            "item",
         )
         name_element = ET.SubElement(
             parameter_item,
-            f"{{{SCHEDULE_REPORT_NS}}}name",
+            "name",
         )
         name_element.text = name
         values_element = ET.SubElement(
             parameter_item,
-            f"{{{SCHEDULE_REPORT_NS}}}values",
+            "values",
         )
         for value in values:
             value_element = ET.SubElement(
                 values_element,
-                f"{{{SCHEDULE_REPORT_NS}}}item",
+                "item",
             )
             value_element.text = value
 
     report_path = ET.SubElement(
         report_request,
-        f"{{{SCHEDULE_REPORT_NS}}}reportAbsolutePath",
+        "reportAbsolutePath",
     )
     report_path.text = report_absolute_path
 
     chunk_size = ET.SubElement(
         report_request,
-        f"{{{SCHEDULE_REPORT_NS}}}sizeOfDataChunkDownload",
+        "sizeOfDataChunkDownload",
     )
     chunk_size.text = str(size_of_data_chunk_download)
 
@@ -1006,7 +1006,7 @@ def _schedule_envelope(
         if value is not None:
             element = ET.SubElement(
                 schedule_request,
-                f"{{{SCHEDULE_REPORT_NS}}}{name}",
+                name,
             )
             element.text = value
 
@@ -1022,21 +1022,21 @@ def _schedule_envelope(
     for name, value in boolean_values:
         element = ET.SubElement(
             schedule_request,
-            f"{{{SCHEDULE_REPORT_NS}}}{name}",
+            name,
         )
         element.text = str(value).lower()
 
     if user_job_desc is not None:
         description = ET.SubElement(
             schedule_request,
-            f"{{{SCHEDULE_REPORT_NS}}}userJobDesc",
+            "userJobDesc",
         )
         description.text = user_job_desc
 
     if job_name is not None:
         name_element = ET.SubElement(
             schedule_request,
-            f"{{{SCHEDULE_REPORT_NS}}}userJobName",
+            "userJobName",
         )
         name_element.text = job_name
 

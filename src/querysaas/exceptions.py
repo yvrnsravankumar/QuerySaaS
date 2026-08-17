@@ -156,3 +156,16 @@ class BIPReplaceError(BIPCatalogError):
             "restoration_verification": self.restoration_verification,
         }))
         return result
+
+
+class LocalDataError(QuerySaaSError):
+    """Base local data library error."""
+
+class LocalDataFolderError(LocalDataError): pass
+class LocalDataFileError(LocalDataError): pass
+class LocalDataSchemaError(LocalDataError): pass
+class LocalDataTableNameError(LocalDataError): pass
+class LocalDataReadOnlyError(LocalDataError): pass
+class LocalDataSqlError(LocalDataError): pass
+class LocalDataExportError(LocalDataError): pass
+class LocalDataWriteBackError(LocalDataError): pass

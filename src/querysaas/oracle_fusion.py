@@ -5,7 +5,9 @@ import base64
 import getpass
 import gzip
 import html
+import random
 import re
+import time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO
@@ -251,43 +253,71 @@ def provision_bip_report(
 
 
 def execute_query(
-        fusion_url,
-        username,
-        auth_header,
-        raw_sql,
-        report_path=BIP_EXECUTION_REPORT_PATH,
-        timeout=REQUEST_TIMEOUT,
-        verify_ssl=VERIFY_SSL,
+    fusion_url,
+    username,
+    auth_header,
+    raw_sql,
+    report_path=BIP_EXECUTION_REPORT_PATH,
+    timeout=REQUEST_TIMEOUT,
+    verify_ssl=VERIFY_SSL,
+    max_retries=5,
+    retry_base_seconds=3.0,
+):
+    """Execute one Fusion BIP query with bounded transient-failure retries."""
+    if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
+        raise ValueError("max_retries must be zero or a positive integer.")
+    if (
+        isinstance(retry_base_seconds, bool)
+        or not isinstance(retry_base_seconds, (int, float))
+        or retry_base_seconds <= 0
     ):
-        endpoint = normalize_report_url(fusion_url)
-        final_report_path = replace_username(report_path, username)
-        encoded_sql = gzip_base64(raw_sql)
+        raise ValueError("retry_base_seconds must be greater than zero.")
 
-        envelope = f"""
-    <soap:Envelope
-        xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
-        xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
-        <soap:Header/>
-        <soap:Body>
-            <pub:runReport>
-                <pub:reportRequest>
-                    <pub:parameterNameValues>
-                        <pub:item>
-                            <pub:name>P_B64_CONTENT</pub:name>
-                            <pub:values>
-                                <pub:item>{escape(encoded_sql)}</pub:item>
-                            </pub:values>
-                        </pub:item>
-                    </pub:parameterNameValues>
-                    <pub:reportAbsolutePath>{escape(final_report_path)}</pub:reportAbsolutePath>
-                    <pub:attributeFormat>xml</pub:attributeFormat>
-                    <pub:sizeOfDataChunkDownload>-1</pub:sizeOfDataChunkDownload>
-                </pub:reportRequest>
-            </pub:runReport>
-        </soap:Body>
-    </soap:Envelope>
-    """.strip()
+    endpoint = normalize_report_url(fusion_url)
+    final_report_path = replace_username(report_path, username)
+    encoded_sql = gzip_base64(raw_sql)
+    envelope = f"""
+<soap:Envelope
+    xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
+    xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
+    <soap:Header/>
+    <soap:Body>
+        <pub:runReport>
+            <pub:reportRequest>
+                <pub:parameterNameValues>
+                    <pub:item>
+                        <pub:name>P_B64_CONTENT</pub:name>
+                        <pub:values>
+                            <pub:item>{escape(encoded_sql)}</pub:item>
+                        </pub:values>
+                    </pub:item>
+                </pub:parameterNameValues>
+                <pub:reportAbsolutePath>{escape(final_report_path)}</pub:reportAbsolutePath>
+                <pub:attributeFormat>xml</pub:attributeFormat>
+                <pub:sizeOfDataChunkDownload>-1</pub:sizeOfDataChunkDownload>
+            </pub:reportRequest>
+        </pub:runReport>
+    </soap:Body>
+</soap:Envelope>
+""".strip()
 
+    retryable_statuses = {429, 500, 502, 503, 504}
+    total_attempts = max_retries + 1
+
+    def wait_before_retry(attempt, reason):
+        delay = min(
+            float(retry_base_seconds) * (2 ** (attempt - 1))
+            + random.uniform(0.0, 1.0),
+            60.0,
+        )
+        print(
+            f"Transient Oracle Fusion BIP failure on attempt "
+            f"{attempt}/{total_attempts}: {reason}"
+        )
+        print(f"Retrying in {delay:.1f} seconds...")
+        time.sleep(delay)
+
+    for attempt in range(1, total_attempts + 1):
         try:
             response = requests.post(
                 endpoint,
@@ -299,41 +329,72 @@ def execute_query(
                 timeout=timeout,
                 verify=verify_ssl,
             )
+        except (requests.Timeout, requests.ConnectionError) as error:
+            if attempt < total_attempts:
+                wait_before_retry(attempt, error)
+                continue
+            raise RuntimeError(
+                f"Oracle Fusion query request failed after {attempt} "
+                f"attempt(s): {error}"
+            ) from error
         except requests.RequestException as error:
             raise RuntimeError(
                 f"Oracle Fusion query request failed: {error}"
             ) from error
 
         response_text = response.text or ""
-
-        if not response.ok and response.status_code != 500:
-            raise RuntimeError(
-                f"Oracle Fusion returned HTTP {response.status_code}.\n"
-                f"Response: {response_text[:1000]}"
-            )
-
         fault_message = extract_soap_fault(response_text)
 
+        # A valid SOAP fault is deterministic, including Oracle SQL errors.
         if fault_message:
             raise RuntimeError(
                 f"Oracle Fusion SOAP fault: {fault_message}"
             )
 
         if not response.ok:
+            reason = (
+                f"HTTP {response.status_code} {response.reason}; "
+                f"response length {len(response.content or b''):,} bytes"
+            )
+            if response.status_code in retryable_statuses and attempt < total_attempts:
+                wait_before_retry(attempt, reason)
+                continue
             raise RuntimeError(
                 f"Oracle Fusion returned HTTP {response.status_code}.\n"
                 f"Response: {response_text[:1000]}"
             )
 
+        try:
+            report_base64 = extract_report_bytes(response_text)
+        except RuntimeError as error:
+            error_text = str(error).lower()
+            retryable_payload_error = any(
+                marker in error_text
+                for marker in (
+                    "invalid soap xml",
+                    "does not contain reportbytes",
+                    "not valid base64",
+                )
+            )
+            if retryable_payload_error and attempt < total_attempts:
+                wait_before_retry(
+                    attempt,
+                    f"incomplete or invalid SOAP payload; "
+                    f"response length {len(response.content or b''):,} bytes",
+                )
+                continue
+            raise
+
         return {
-            "report_base64": extract_report_bytes(response_text),
+            "report_base64": report_base64,
             "soap_response": response_text,
             "http_status": response.status_code,
             "report_path": final_report_path,
             "sql": raw_sql,
+            "attempts": attempt,
         }
 
-
+    raise RuntimeError("Oracle Fusion query retry loop exited unexpectedly.")
 
 class FusionConnection:
     def __init__(
@@ -505,7 +566,14 @@ class FusionConnection:
 
         return dataframe
 
-    def executequery(self, sql, as_dataframe=True, all_varchar=False):
+    def executequery(
+        self,
+        sql,
+        as_dataframe=True,
+        all_varchar=False,
+        max_retries=5,
+        retry_base_seconds=3.0,
+    ):
         """
         Execute SQL through Fusion BIP.
 
@@ -524,6 +592,8 @@ class FusionConnection:
             report_path=self.report_path,
             timeout=self.timeout,
             verify_ssl=self.verify_ssl,
+            max_retries=max_retries,
+            retry_base_seconds=retry_base_seconds,
         )
 
         if not as_dataframe:
@@ -1285,6 +1355,8 @@ def _syncquery2dd_parallel(
     all_varchar=True,
     order_by=None,
     max_workers=4,
+    max_retries=5,
+    retry_base_seconds=3.0,
 ):
     """
     Synchronize an arbitrary Fusion SELECT query to DuckDB with parallel
@@ -1313,6 +1385,14 @@ def _syncquery2dd_parallel(
 
     if not isinstance(max_workers, int) or not 1 <= max_workers <= 8:
         raise ValueError("max_workers must be between 1 and 8.")
+    if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
+        raise ValueError("max_retries must be zero or a positive integer.")
+    if (
+        isinstance(retry_base_seconds, bool)
+        or not isinstance(retry_base_seconds, (int, float))
+        or retry_base_seconds <= 0
+    ):
+        raise ValueError("retry_base_seconds must be greater than zero.")
 
     if order_by is None:
         order_columns = primary_keys
@@ -1338,7 +1418,12 @@ def _syncquery2dd_parallel(
     """.strip()
 
     print("Counting query result rows...")
-    count_df = self.executequery(count_sql, all_varchar=True)
+    count_df = self.executequery(
+        count_sql,
+        all_varchar=True,
+        max_retries=max_retries,
+        retry_base_seconds=retry_base_seconds,
+    )
 
     if count_df.empty or "ROW_COUNT" not in count_df.columns:
         raise RuntimeError(
@@ -1384,6 +1469,10 @@ def _syncquery2dd_parallel(
                 "duckdb_rows": duckdb_rows,
                 "chunks": 0,
                 "max_workers": max_workers,
+            "max_retries": max_retries,
+            "retry_base_seconds": retry_base_seconds,
+                "max_retries": max_retries,
+                "retry_base_seconds": retry_base_seconds,
                 "target_table": target_table,
                 "duckdb_path": duckdb_path,
                 "primary_key": primary_keys,
@@ -1416,6 +1505,8 @@ def _syncquery2dd_parallel(
             dataframe = self.executequery(
                 chunk_sql,
                 all_varchar=all_varchar,
+                max_retries=max_retries,
+                retry_base_seconds=retry_base_seconds,
             )
 
             return {
@@ -1534,6 +1625,8 @@ def _copy2dd_parallel(
     additional_where=None,
     all_varchar=True,
     max_workers=4,
+    max_retries=5,
+    retry_base_seconds=3.0,
 ):
     """
     Synchronize a Fusion table/view to DuckDB with parallel BIP extraction.
@@ -1572,6 +1665,8 @@ def _copy2dd_parallel(
         all_varchar=all_varchar,
         order_by=primary_keys,
         max_workers=max_workers,
+        max_retries=max_retries,
+        retry_base_seconds=retry_base_seconds,
     )
 
     result.update({
