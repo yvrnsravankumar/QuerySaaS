@@ -32,3 +32,29 @@ db.refresh(); db.list_files(); db.list_tables(); db.describe_table(name); db.pre
 db.query(sql, parameters=None); db.execute(sql, parameters=None); db.materialize(source, as_table=None, replace=False)
 db.export_csv(source, output_file); db.export_tsv(source, output_file); db.export_parquet(source, output_file)
 ```
+
+
+## Network retry parameters
+
+The following public methods expose `max_retries=3`, `retry_base_seconds=1.0`, and `retry_max_seconds=30.0`:
+
+- `execute_query`
+- `FusionConnection.executequery`
+- `copy_fusion_to_local`
+- `copy_fusion_to_local_parallel`
+- `copy2file`
+- `copy2file_parallel`
+- `copy2dd`
+- `copy2dd_parallel`
+- `syncquery2dd`
+- `syncquery2dd_parallel`
+- `get_folder_contents`
+- `download_bip_object`
+- `get_bip_object_xml`
+- `bip_object_exists`
+- `verify_bip_object`
+- `refresh_fbdi_jobs`
+- `get_fbdi_jobs`
+- `monitor_ess_job`
+
+The default allows one initial attempt plus three retries. Only recognized transient network and service failures are retried. Local-only methods do not expose these parameters.
