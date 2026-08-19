@@ -1,4 +1,30 @@
 # Changelog
+## 0.3.7 - 2026-08-18
+### Added
+- Automatic row-count planning for chunk size, workers, pending pages, and total chunks.
+- Atomic CSV and Parquet part-file datasets with manifest row counts and SHA-256 hashes.
+- Canonical wrapper support for progress and all Phase 1 parallel options.
+### Added
+- Automatic row-count planning for chunk size, workers, pending pages, and total chunks.
+- Atomic CSV and Parquet part-file datasets with manifest row counts and SHA-256 hashes.
+- Canonical wrapper support for progress and all Phase 1 parallel options.
+### Changed
+- Parallel file extraction uses persistent bounded scheduling instead of repeated executor waves.
+- Retry options are forwarded to each page and the complete operation is no longer blindly retried.
+- Added page, pending, elapsed-time, and throughput metrics plus optional summary progress.
+### Preserved
+- Ordered output, schema checks, atomic replacement, legacy methods, unified 0.3.6 API, and QuerySaaS Studio compatibility.
+
+## 0.3.6 - 2026-08-18
+### Added
+- Canonical Fusion method names with all legacy methods preserved.
+- Automatic sequential routing for 5,000 rows or fewer and parallel routing above 5,000 rows.
+- Table-only SOURCE_ROWID fallback through the existing validated table-copy behavior.
+- Permanent pytest exclusions for backups, patches, reports, and generated folders.
+### Preserved
+- QuerySaaS 0.3.5 extraction, retry, DuckDB, BI Publisher, FBDI, ESS, AI, and Local Data Library engines.
+- QuerySaaS Studio compatibility.
+
 ## 0.3.5 - 2026-08-17
 
 ### Added

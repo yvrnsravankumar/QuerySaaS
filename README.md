@@ -2,7 +2,7 @@
 
 QuerySaaS is a Python library for querying and synchronizing enterprise SaaS applications. The Oracle Fusion provider supports BI Publisher SQL execution, Oracle-aware SQL planning, DuckDB synchronization, local delimited-file extraction, FBDI import and purge workflows, ESS job submission and monitoring, BI Publisher catalog lifecycle operations, and a provider-neutral AI assistant foundation.
 
-**Current version: 0.3.5**
+**Current version: 0.3.7**
 
 Repository: <https://github.com/yvrnsravankumar/QuerySaaS>
 
@@ -221,3 +221,18 @@ result = fusion.executequery(
 ```
 
 `max_retries=3` means one initial request plus at most three retries. QuerySaaS retries recognized transient connection failures and HTTP 408, 429, 500, 502, 503, and 504 responses. Authentication, authorization, validation, protected-operation, schema, and cancellation failures are not retried. Local Data Library methods remain local-only and do not expose network retry parameters.
+
+## Unified Fusion API 0.3.6
+QuerySaaS 0.3.6 adds canonical Fusion method names and automatic routing at a 5,000-row threshold while retaining all 0.3.5 engines and legacy methods. Automatic ROWID fallback remains confined to direct table copies.
+
+## Parallel engine 0.3.7 Phase 1
+Parallel file extraction now uses one persistent bounded executor, page-scoped retries, ordered writes, throughput metrics, and optional summary progress. Existing destinations remain protected by atomic replacement.
+
+## Automatic parallel planning and part files
+The 0.3.7 canonical file API can count rows, calculate chunk size, workers, pending pages, and write atomic CSV or Parquet part-file datasets with manifest hashes.
+
+## Automatic parallel planning and part files
+The 0.3.7 canonical file API can count rows, calculate chunk size, workers, pending pages, and write atomic CSV or Parquet part-file datasets with manifest hashes.
+
+## DuckDB target naming and runtime
+Canonical DuckDB methods support explicit target_table naming, automatic order_by from primary_key, quiet summary output, actual runtime, and rows-per-second metrics.
