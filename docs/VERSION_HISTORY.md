@@ -17,3 +17,9 @@ Added the DuckDB-backed Local Data Library with filename-as-table aliases, manag
 ## 0.3.5
 
 Standardized retries across approved network-bound query, file extraction, DuckDB synchronization, BI Publisher read, FBDI registry read, and ESS monitoring methods. The default is three retries with capped exponential backoff and jitter. Non-idempotent submissions remain excluded from blind automatic retries.
+
+## 0.3.6
+Added an additive unified Fusion API and automatic 5,000-row mode routing while retaining the validated 0.3.5 engines and all legacy methods.
+
+## 0.3.7
+Parallel engine Phase 1 adds bounded scheduling, page-scoped retry forwarding, metrics, and reduced output while preserving atomic ordered file extraction.
