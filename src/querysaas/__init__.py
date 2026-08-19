@@ -7,7 +7,7 @@ from .sql import OracleSqlPlanner, SqlPlan, count_query, limit_query, page_query
 from .exceptions import *
 install_pipeline_methods(FusionConnection)
 install_fbdi_methods(FusionConnection)
-__version__ = "0.3.5"
+__version__ = "0.3.7"
 __all__=['connect','FusionConnection','fusionconnect','build_auth_header','execute_query','provision_bip_report','SUPPORTED_PROVIDERS','PLANNED_PROVIDERS','OracleSqlPlanner','SqlPlan','CountQueryResult','LocalFileCopyResult','copy_fusion_to_local','copy_fusion_to_local_parallel','count_query','limit_query','page_query','validate_query']
 # QUERYSAAS-BIP-BEGIN
 from .bip import install_bip_methods
@@ -102,3 +102,10 @@ copy_fusion_to_local_parallel = wrap_retryable_network_function(
     copy_fusion_to_local_parallel,
     "copy_fusion_to_local_parallel",
 )
+
+
+from .parallel_parts import ParallelExecutionPlan, PartFileCopyResult, plan_parallel_execution, copy_fusion_query_to_parts
+from .fusion_api import FusionModeDecision, LEGACY_METHOD_MAP, install_unified_fusion_methods
+install_unified_fusion_methods(FusionConnection)
+
+

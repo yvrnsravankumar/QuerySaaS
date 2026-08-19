@@ -240,7 +240,6 @@ def wrap_retryable_network_function(function, operation=None):
 _METHOD_NAMES = (
     "executequery",
     "copy2file",
-    "copy2file_parallel",
     "copy2dd",
     "copy2dd_parallel",
     "syncquery2dd",
@@ -266,3 +265,4 @@ def install_network_retry_methods(connection_class):
                 wrap_retryable_network_function(method, name),
             )
     return connection_class
+
