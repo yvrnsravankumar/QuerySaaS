@@ -1,4 +1,4 @@
-import inspect
+﻿import inspect
 import pytest
 import querysaas
 from querysaas import FusionConnection
@@ -32,7 +32,7 @@ class FakeConnection:
 
 
 def test_version_and_methods():
-    assert querysaas.__version__ == "0.3.7"
+    assert querysaas.__version__ == "0.3.8"
     for name in ["execute_fusion_query", "count_fusion_query", "copy_fusion_query_to_file", "copy_fusion_table_to_duckdb", "sync_fusion_query_to_duckdb"]:
         assert callable(getattr(FusionConnection, name))
     for name in LEGACY_METHOD_MAP:
@@ -83,4 +83,5 @@ def test_signatures_keep_safe_defaults():
     assert signature.parameters["mode"].default == "auto"
     assert signature.parameters["parallel_threshold"].default == 5000
     assert signature.parameters["max_retries"].default == 3
+
 
