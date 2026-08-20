@@ -1,4 +1,45 @@
 # Changelog
+## 0.3.8 - 2026-08-20
+
+### Added
+
+- Automatic OpenAI-compatible model discovery using only an API URL and key.
+- Model discovery through the OpenAI-compatible `/models` route.
+- Automatic preferred-model selection and chat-completion verification.
+- Support for API URLs supplied as either a gateway root or `/v1` API root.
+- DuckDB AI SQL generation supporting DDL, DML, transactions, administration statements, and multi-statement scripts.
+- Explicit Oracle Fusion and DuckDB AI SQL execution targets.
+- Resumable CSV and Parquet part-file extraction.
+- Checkpoint verification, manifests, SHA-256 hashes, and failed-page splitting.
+- Expanded Local Data Library, FBDI, ESS, and BI Publisher capabilities.
+- Comprehensive replacement README covering the complete QuerySaaS feature set.
+
+### Changed
+
+- Increased the canonical parallel worker limit to 32.
+- Changed automatic parallel planning to use up to 32 workers.
+- Changed automatic pending-page planning to use up to 64 pending pages.
+- Preserved Oracle Fusion AI SQL as read-only.
+- Allowed complete DuckDB SQL generation, including unrestricted valid DDL and DML.
+- Preserved legacy Fusion methods while documenting canonical replacements.
+
+### Performance
+
+- Validated a 9,549,914-row GL_BALANCES extraction using 32 workers.
+- Completed the QuerySaaS pipeline in approximately 56 minutes.
+- Achieved approximately 2,843 rows per second.
+- Completed with no failed requests or retries.
+- Completed with no malformed rows, empty primary keys, ordering errors, or adjacent duplicate keys.
+
+### Validation
+
+- 206 tests passed.
+- 1 test skipped.
+- Automatic AI model-discovery tests passed.
+- OpenAI-compatible transport tests passed.
+- DuckDB AI SQL tests passed.
+- Oracle Fusion SQL safety tests passed.
+- Parallel extraction and planning tests passed.
 ## 0.3.7 - 2026-08-18
 ### Added
 - Automatic row-count planning for chunk size, workers, pending pages, and total chunks.
