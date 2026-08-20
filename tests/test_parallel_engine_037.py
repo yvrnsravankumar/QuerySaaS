@@ -50,3 +50,29 @@ def test_connection_without_retry_keywords_remains_compatible(tmp_path):
     output=tmp_path/'legacy.csv'
     result=copy_fusion_to_local_parallel(LegacyFake(),'SELECT ID FROM T',output,'ID',chunk_size=2,max_workers=2,max_rows=3)
     assert result.rows==3
+
+
+def test_canonical_file_api_honors_explicit_sixteen_workers():
+    from querysaas.parallel_parts import plan_parallel_execution
+
+    class FakeConnection:
+        def countquery(self, query, **kwargs):
+            class CountResult:
+                row_count = 100_000
+            return CountResult()
+
+    plan = plan_parallel_execution(
+        FakeConnection(),
+        "SELECT ID FROM TEST_TABLE",
+        mode="parallel",
+        chunk_size=5_000,
+        max_workers=16,
+        worker_limit=32,
+        max_pending_pages=32,
+        max_rows=100_000,
+    )
+
+    assert plan.total_chunks == 20
+    assert plan.max_workers == 16
+    assert plan.max_pending_pages == 20
+
