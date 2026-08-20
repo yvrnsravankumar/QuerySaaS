@@ -69,7 +69,7 @@ def count_fusion_query(self, sql):
 def copy_fusion_query_to_file(
     self, query, filename, *, mode="auto", order_by=None,
     parallel_threshold=PARALLEL_THRESHOLD, delimiter=",", chunk_size="auto",
-    max_workers="auto", worker_limit=8, max_pending_pages="auto",
+    max_workers="auto", worker_limit=32, max_pending_pages="auto",
     start_offset=0, max_rows=None, all_varchar=True, encoding="utf-8-sig",
     overwrite=True, include_header=True, quotechar='"', quoting=0,
     progress="summary", progress_interval_pages=10,

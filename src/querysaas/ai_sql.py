@@ -331,3 +331,135 @@ def generate_oracle_sql(
         raw_text=response.text,
         metadata={"request_id": response.request_id, "usage": dict(response.usage or {})},
     )
+
+# QUERYSAAS-AI-DUCKDB-SQL-BEGIN
+
+DUCKDB_EXECUTION_TARGET = "duckdb"
+ORACLE_FUSION_EXECUTION_TARGET = "oracle_fusion"
+
+
+def normalize_sql_execution_target(value):
+    """Return the canonical SQL execution target."""
+    target = str(value or "").strip().casefold()
+    aliases = {
+        "fusion": ORACLE_FUSION_EXECUTION_TARGET,
+        "oracle": ORACLE_FUSION_EXECUTION_TARGET,
+        "oracle_fusion": ORACLE_FUSION_EXECUTION_TARGET,
+        "duckdb": DUCKDB_EXECUTION_TARGET,
+    }
+    try:
+        return aliases[target]
+    except KeyError as exc:
+        raise ValueError(
+            "execution_target must be 'oracle_fusion' or 'duckdb'."
+        ) from exc
+
+
+def build_duckdb_sql_prompt(request, *, schema_context=None, allow_multiple_statements=True):
+    """Build a DuckDB-native prompt without Oracle Fusion read-only restrictions."""
+    if not isinstance(request, str) or not request.strip():
+        raise ValueError("SQL request cannot be empty.")
+    if not isinstance(allow_multiple_statements, bool):
+        raise ValueError("allow_multiple_statements must be True or False.")
+
+    statement_policy = (
+        "You may return one statement or a complete multi-statement DuckDB script."
+        if allow_multiple_statements
+        else "Return exactly one DuckDB statement."
+    )
+    context = ""
+    if schema_context:
+        context = "\nAvailable DuckDB schema context:\n" + str(schema_context)
+
+    return (
+        "You are a DuckDB SQL assistant.\n"
+        "Generate valid DuckDB SQL for the user's request. "
+        "DuckDB DDL, DML, transactions, COPY, ATTACH, DETACH, IMPORT, EXPORT, "
+        "INSTALL, LOAD, PRAGMA, macros, views, schemas, sequences, indexes, "
+        "CREATE OR REPLACE, ALTER, DROP, TRUNCATE, and RENAME are permitted. "
+        + statement_policy
+        + " Do not apply Oracle Fusion read-only restrictions. "
+        "Return the SQL in a ```sql fenced block followed by a short explanation."
+        + context
+        + "\nUser request:\n"
+        + request.strip()
+    )
+
+
+def classify_duckdb_sql(sql):
+    """Classify DuckDB SQL for display without blocking valid DDL or DML."""
+    if not isinstance(sql, str) or not sql.strip():
+        raise ValueError("DuckDB SQL cannot be empty.")
+    masked = _mask_literals_and_comments(sql)
+    words = tuple(match.group(0).upper() for match in re.finditer(r"\b[A-Za-z]+\b", masked))
+    first = words[0] if words else "UNKNOWN"
+    multiple = any(masked[pos + 1:].strip() for pos in (m.start() for m in re.finditer(r";", masked)))
+    ddl = first in {"CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME", "COMMENT"}
+    dml = first in {"INSERT", "UPDATE", "DELETE", "MERGE", "REPLACE"}
+    transaction = first in {"BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT"}
+    read_only = first in {"SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN"}
+    destructive = first in {"DROP", "TRUNCATE"}
+    return {
+        "execution_target": DUCKDB_EXECUTION_TARGET,
+        "dialect": "duckdb",
+        "statement_type": first,
+        "statement_types": words,
+        "read_only": read_only,
+        "changes_data": dml or destructive,
+        "changes_schema": ddl,
+        "transaction_control": transaction,
+        "multiple_statements": multiple,
+        "destructive": destructive,
+        "allowed": True,
+        "risk_level": "HIGH" if destructive else ("MEDIUM" if ddl or dml else "LOW"),
+        "warnings": (),
+    }
+
+
+def generate_duckdb_sql(
+    profile,
+    request,
+    *,
+    schema_context=None,
+    allow_multiple_statements=True,
+    temperature=0,
+    session=None,
+):
+    """Generate unrestricted DuckDB SQL and return a provider-independent result."""
+    prompt = build_duckdb_sql_prompt(
+        request,
+        schema_context=schema_context,
+        allow_multiple_statements=allow_multiple_statements,
+    )
+    response = generate_ai_text(
+        profile,
+        prompt,
+        temperature=temperature,
+        session=session,
+    )
+    sql = extract_sql(response.text)
+    classification = classify_duckdb_sql(sql)
+    if not allow_multiple_statements and classification["multiple_statements"]:
+        raise AiSqlSafetyError("DuckDB response contained multiple statements.")
+    explanation = re.sub(
+        r"```(?:sql|duckdb)?\s*.*?```",
+        "",
+        response.text,
+        flags=re.I | re.S,
+    ).strip() or None
+    return {
+        "prompt": request.strip(),
+        "sql": sql,
+        "classification": classification,
+        "provider": response.provider,
+        "model": response.model,
+        "explanation": explanation,
+        "metadata": {
+            "execution_target": DUCKDB_EXECUTION_TARGET,
+            "request_id": response.request_id,
+            "usage": dict(response.usage or {}),
+            "automatic_execution": False,
+        },
+    }
+
+# QUERYSAAS-AI-DUCKDB-SQL-END

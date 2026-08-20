@@ -45,7 +45,7 @@ def plan_parallel_execution(connection, query, *, mode='auto', parallel_threshol
     requested=str(mode or 'auto').casefold()
     if requested not in {'auto','sequential','parallel'}: raise ValueError("mode must be 'auto', 'sequential', or 'parallel'")
     selected=('parallel' if planned>parallel_threshold else 'sequential') if requested=='auto' else requested
-    requested_workers=16 if max_workers=='auto' else int(max_workers)
+    requested_workers = 32 if max_workers == "auto" else int(max_workers)
     workers=min(requested_workers,int(worker_limit),max(chunks,1))
     if workers<1 or workers>32: raise ValueError('max_workers must resolve between 1 and 32')
     if selected=='sequential': workers=1

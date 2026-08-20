@@ -108,4 +108,24 @@ from .parallel_parts import ParallelExecutionPlan, PartFileCopyResult, plan_para
 from .fusion_api import FusionModeDecision, LEGACY_METHOD_MAP, install_unified_fusion_methods
 install_unified_fusion_methods(FusionConnection)
 
+# QUERYSAAS-AI-DUCKDB-SQL-EXPORTS-BEGIN
+from .ai_sql import (
+    DUCKDB_EXECUTION_TARGET,
+    ORACLE_FUSION_EXECUTION_TARGET,
+    normalize_sql_execution_target,
+    build_duckdb_sql_prompt,
+    classify_duckdb_sql,
+    generate_duckdb_sql,
+)
+# QUERYSAAS-AI-DUCKDB-SQL-EXPORTS-END
 
+# QUERYSAAS-AI-AUTO-MODEL-DISCOVERY-EXPORTS-BEGIN
+from .ai import (
+    AiModelInfo,
+    AiProviderSetupResult,
+    normalize_openai_compatible_api_root,
+    list_ai_models_from_url,
+    select_default_ai_model,
+    configure_openai_compatible_provider,
+)
+# QUERYSAAS-AI-AUTO-MODEL-DISCOVERY-EXPORTS-END

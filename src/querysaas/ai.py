@@ -318,3 +318,126 @@ def generate_ai_text(profile, prompt, *, system_prompt=None, context=None, tempe
         usage=usage,
         raw=data,
     )
+
+# QUERYSAAS-AI-AUTO-MODEL-DISCOVERY-BEGIN
+
+@dataclass(frozen=True)
+class AiModelInfo:
+    model_id: str
+    display_name: str
+
+    def to_dict(self):
+        return {"model_id": self.model_id, "display_name": self.display_name}
+
+
+@dataclass(frozen=True)
+class AiProviderSetupResult:
+    profile: AiProviderProfile
+    models: tuple[AiModelInfo, ...]
+    selected_model: str
+    protocol: str = "openai_compatible"
+    discovery_supported: bool = True
+
+    def to_dict(self):
+        return {
+            "profile": self.profile.safe_dict(),
+            "models": [item.to_dict() for item in self.models],
+            "selected_model": self.selected_model,
+            "protocol": self.protocol,
+            "discovery_supported": self.discovery_supported,
+        }
+
+
+def normalize_openai_compatible_api_root(base_url):
+    """Accept either a gateway root or a root already ending in /v1."""
+    normalized = normalize_ai_base_url(base_url)
+    return normalized if normalized.casefold().endswith("/v1") else normalized + "/v1"
+
+
+def _friendly_model_name(model_id):
+    text = str(model_id).strip()
+    return text.replace("/", " / ").replace("_", " ")
+
+
+def list_ai_models_from_url(base_url, api_key, *, timeout=120, session=None):
+    """Discover OpenAI-compatible models using only an API URL and key."""
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise AiConfigurationError("AI API key cannot be empty.")
+    root = normalize_openai_compatible_api_root(base_url)
+    profile = AiProviderProfile(
+        provider="openai_compatible",
+        model="__model_discovery__",
+        base_url=root,
+        api_key=api_key.strip(),
+        timeout=timeout,
+    )
+    _, data = _send(profile, "GET", _join(root, "/models"), session=session)
+    items = data.get("data") if isinstance(data, Mapping) else None
+    if not isinstance(items, list):
+        raise AiProviderError("AI provider did not return an OpenAI-compatible model list.")
+    seen = set()
+    models = []
+    for item in items:
+        model_id = item.get("id") if isinstance(item, Mapping) else None
+        if isinstance(model_id, str) and model_id.strip() and model_id.strip() not in seen:
+            model_id = model_id.strip()
+            seen.add(model_id)
+            models.append(AiModelInfo(model_id, _friendly_model_name(model_id)))
+    if not models:
+        raise AiProviderError("AI provider returned an empty model list.")
+    return tuple(models)
+
+
+def select_default_ai_model(models, *, previous_model=None, preferred_models=None):
+    """Select a usable default without requiring the end user to type a model."""
+    ids = tuple(item.model_id if isinstance(item, AiModelInfo) else str(item) for item in models)
+    if not ids:
+        raise AiConfigurationError("At least one discovered model is required.")
+    candidates = []
+    if previous_model:
+        candidates.append(str(previous_model))
+    candidates.extend(tuple(preferred_models or ()))
+    candidates.extend(("claude-sonnet-4-5", "gpt-4o", "ibm/granite-4-h-small"))
+    for candidate in candidates:
+        if candidate in ids:
+            return candidate
+    return ids[0]
+
+
+def configure_openai_compatible_provider(
+    base_url,
+    api_key,
+    *,
+    previous_model=None,
+    preferred_models=None,
+    timeout=120,
+    verify_generation=True,
+    session=None,
+):
+    """Discover models, auto-select one, and optionally verify chat generation."""
+    root = normalize_openai_compatible_api_root(base_url)
+    models = list_ai_models_from_url(root, api_key, timeout=timeout, session=session)
+    selected = select_default_ai_model(
+        models,
+        previous_model=previous_model,
+        preferred_models=preferred_models,
+    )
+    profile = AiProviderProfile(
+        provider="openai_compatible",
+        model=selected,
+        base_url=root,
+        api_key=api_key.strip(),
+        timeout=timeout,
+    )
+    if verify_generation:
+        response = generate_ai_text(
+            profile,
+            "Reply with exactly: QUERYSAAS_AI_CONNECTED",
+            temperature=0,
+            session=session,
+        )
+        if not response.text.strip():
+            raise AiProviderError("AI provider connection test returned no text.")
+    return AiProviderSetupResult(profile, models, selected)
+
+# QUERYSAAS-AI-AUTO-MODEL-DISCOVERY-END
